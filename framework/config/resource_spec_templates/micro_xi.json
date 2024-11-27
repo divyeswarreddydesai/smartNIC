@@ -1,0 +1,104 @@
+[
+  {
+    "name": "on_prem_pe",
+    "type": "$NOS_CLUSTER",
+    "must_run_on_hypervisors": ["ahv"],
+    "hardware": {
+      "cluster_min_nodes": 1,
+      "min_host_gb_ram": 128
+    },
+    "static_ips": [
+      {
+        "num_ips": 2
+      }
+    ]
+  },
+  {
+    "name": "on_prem_pc",
+    "type": "$PRISM_CENTRAL",
+    "provider": {
+      "host": "on_prem_pe"
+    },
+    "prism_elements": [
+      {
+        "host": "on_prem_pe"
+      }
+    ],
+    "dependencies": [
+      "on_prem_pe"
+    ],
+    "scaleout": {
+      "num_instances": 1
+    }
+  },
+  {
+    "name": "xi_pe",
+    "type": "$NOS_CLUSTER",
+    "must_run_on_hypervisors": ["ahv"],
+    "hardware": {
+      "cluster_min_nodes": 1,
+      "min_host_gb_ram": 128
+    },
+    "static_ips": [
+      {
+        "num_ips": 2
+      }
+    ]
+  },
+  {
+    "name": "xi_pc",
+    "type": "$PRISM_CENTRAL",
+    "provider": {
+      "host": "xi_pe"
+    },
+    "prism_elements": [
+      {
+        "host": "xi_pe"
+      }
+    ],
+    "dependencies": [
+      "xi_pe"
+    ],
+    "xi": {
+      "pair_on_prem_pc":"on_prem_pc"
+    },
+    "scaleout": {
+      "num_instances": 1
+    }
+  },
+  {
+    "name": "avm",
+    "type": "$AVM",
+    "static_pool": "$AUTO",
+    "pair_elements": [
+      {
+        "host": "xi_pe"
+      },
+      {
+        "host": "xi_pc"
+      }
+    ]
+  },
+  {
+    "name": "lb",
+    "type": "$LOAD_BALANCER",
+    "static_pool": "$AUTO",
+    "pair_elements": [
+      {
+        "host": "on_prem_pe"
+      },
+      {
+        "host": "xi_pe"
+      },
+      {
+        "host": "xi_pc"
+      }
+    ]
+  },
+  {
+    "name": "vmx",
+    "type": "$MX_ROUTER",
+    "static_pool": "$AUTO"
+  }
+]
+

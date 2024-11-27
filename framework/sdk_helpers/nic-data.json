@@ -1,0 +1,220 @@
+{
+	"info": {
+		"_postman_id": "25612ce5-10f1-46c9-b56b-5329351c4ea8",
+		"name": "NicProfile",
+		"schema": "https://schema.getpostman.com/json/collection/v2.0.0/collection.json",
+		"_exporter_id": "32800219"
+	},
+	"item": [
+		{
+			"name": "https://10.19.117.81:9440/api/clustermgmt/v4.0/config/host-nics",
+			"protocolProfileBehavior": {
+				"disableBodyPruning": true,
+				"disabledSystemHeaders": {
+					"accept": true,
+					"accept-encoding": true,
+					"content-type": true
+				}
+			},
+			"request": {
+				"auth": {
+					"type": "basic",
+					"basic": {
+						"password": "Nutanix.123",
+						"username": "admin"
+					}
+				},
+				"method": "GET",
+				"header": [
+					{
+						"key": "NTNX-Request-Id",
+						"value": "{{$guid}}",
+						"type": "default"
+					},
+					{
+						"key": "Content-Type",
+						"value": "application/json",
+						"type": "default"
+					},
+					{
+						"key": "If-Match",
+						"value": "YXBwbGljYXRpb24vanNvbg==:0",
+						"type": "text"
+					}
+				],
+				"body": {
+					"mode": "raw",
+					"raw": "{\n        \"name\": \"test1\",\n        \"description\": \"some\",\n        \"capabilitySpec\": {\n            \"capabilityType\": \"SRIOV\",\n            \"numVFs\": 10\n        },\n        \"nicFamily\": \"Sample Nic Family\",\n        \"profileComplianceStatus\": \"COMPLIANT\"\n\n}"
+				},
+				"url": {
+					"raw": "https://10.19.117.81:9440/api/clustermgmt/v4.0/config/host-nics",
+					"protocol": "https",
+					"host": [
+						"10",
+						"19",
+						"117",
+						"81"
+					],
+					"port": "9440",
+					"path": [
+						"api",
+						"clustermgmt",
+						"v4.0",
+						"config",
+						"host-nics"
+					],
+					"query": [
+						{
+							"key": "$filter",
+							"value": "profileComplianceStatus eq Networking.Config.ProfileComplianceStatus'COMPLIANT'",
+							"disabled": true
+						},
+						{
+							"key": "$select",
+							"value": "name",
+							"disabled": true
+						}
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "https://10.19.117.81:9440/api/networking/v4.0/config/nic-profiles/aaf3c099-12f8-4537-8d46-580860aa1be3/$actions/associate-host-nic",
+			"protocolProfileBehavior": {
+				"disabledSystemHeaders": {
+					"accept": true,
+					"accept-encoding": true,
+					"content-type": true
+				}
+			},
+			"request": {
+				"auth": {
+					"type": "basic",
+					"basic": {
+						"password": "Nutanix.123",
+						"username": "admin"
+					}
+				},
+				"method": "POST",
+				"header": [
+					{
+						"key": "NTNX-Request-Id",
+						"value": "{{$guid}}",
+						"type": "default"
+					},
+					{
+						"key": "Content-Type",
+						"value": "application/json",
+						"type": "default"
+					},
+					{
+						"key": "If-Match",
+						"value": "YXBwbGljYXRpb24vanNvbg==:0",
+						"type": "text"
+					}
+				],
+				"body": {
+					"mode": "raw",
+					"raw": "{\n        \"name\": \"NICProfile3\",\n        \"description\": \"This is a sample NIC profile\",\n        \"capabilitySpec\": {\n            \"capabilityType\": \"SRIOV\",\n            \"numVFs\": 10\n        },\n        \"nicFamily\": \"someNicFamily\"\n}\n"
+				},
+				"url": {
+					"raw": "https://10.19.117.81:9440/api/networking/v4.0/config/nic-profiles",
+					"protocol": "https",
+					"host": [
+						"10",
+						"19",
+						"117",
+						"81"
+					],
+					"port": "9440",
+					"path": [
+						"api",
+						"networking",
+						"v4.0",
+						"config",
+						"nic-profiles"
+					],
+					"query": [
+						{
+							"key": "$filter",
+							"value": "profileComplianceStatus eq Networking.Config.ProfileComplianceStatus'COMPLIANT'",
+							"disabled": true
+						}
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "https://10.19.117.81:9440/api/networking/v4.0/config/nic-profiles/07774a93-7c2c-4faf-b605-26433a179822/$actions/associate-host-nic",
+			"protocolProfileBehavior": {
+				"disabledSystemHeaders": {
+					"accept": true,
+					"accept-encoding": true,
+					"content-type": true
+				}
+			},
+			"request": {
+				"auth": {
+					"type": "basic",
+					"basic": {
+						"password": "Nutanix.123",
+						"username": "admin"
+					}
+				},
+				"method": "POST",
+				"header": [
+					{
+						"key": "NTNX-Request-Id",
+						"value": "{{$guid}}",
+						"type": "default"
+					},
+					{
+						"key": "Content-Type",
+						"value": "application/json",
+						"type": "default"
+					},
+					{
+						"key": "If-Match",
+						"value": "YXBwbGljYXRpb24vanNvbg==:0",
+						"type": "text"
+					}
+				],
+				"body": {
+					"mode": "raw",
+					"raw": "{\n  \"hostNicReference\": \"53d07310-f68a-4f1c-96e1-23a8fd2f1af6\"\n}\n"
+				},
+				"url": {
+					"raw": "https://10.19.117.81:9440/api/networking/v4.0/config/nic-profiles/07774a93-7c2c-4faf-b605-26433a179822/$actions/associate-host-nic",
+					"protocol": "https",
+					"host": [
+						"10",
+						"19",
+						"117",
+						"81"
+					],
+					"port": "9440",
+					"path": [
+						"api",
+						"networking",
+						"v4.0",
+						"config",
+						"nic-profiles",
+						"07774a93-7c2c-4faf-b605-26433a179822",
+						"$actions",
+						"associate-host-nic"
+					],
+					"query": [
+						{
+							"key": "$filter",
+							"value": "profileComplianceStatus eq Networking.Config.ProfileComplianceStatus'COMPLIANT'",
+							"disabled": true
+						}
+					]
+				}
+			},
+			"response": []
+		}
+	]
+}

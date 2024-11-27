@@ -1,0 +1,49 @@
+{
+    "test_nic_profile":{"topology":[
+    {
+      "kind":"nic_profile",
+      "params": {
+          "name": "nic_profile_2",
+          "description": "NIC Profile 2",
+          "capabilityType": "SRIOV",
+          "numVFs": 10,
+          "nic_family": "someNicFamily"
+          
+      }
+  },{
+      "kind":"nic_profile",
+      "params": {
+          "name": "nic_profile_3",
+          "description": "NIC Profile 3",
+          "capabilityType": "DP_OFFLOAD",
+          "numVFs": 10,
+          "nic_family": "someNicFamily"
+          
+      }
+  }
+    ]},
+    "test_nic_association":{"topology":[
+    {
+      "kind":"nic_profile_association",
+      "params":{
+        "nic_profile": "nic_profile_2",
+        "host_ip": "",
+        "port_name": "eth4"
+      }
+    }
+    ]},
+    "test_nic_profile_2":[
+    {
+      "kind":"nic_profile",
+      "params": {
+          "name": "nic_profile_3",
+          "description": "NIC Profile 3",
+          "capabilityType": "SRIOV",
+          "numVFs": 10,
+          "nicFamily": "someNicFamily"
+          
+      }
+    }
+    ]
+     
+  }
