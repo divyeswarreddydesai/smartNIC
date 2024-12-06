@@ -125,7 +125,7 @@ class SSHClient:
                 stdin, stdout, stderr = self.client.exec_command(cmd1, timeout=timeout, get_pty=tty)
 
                 if async_:
-                    return stdin, stdout, stderr  # Return immediately for async execution
+                    return {'stdin':stdin,'stdout': stdout, 'std_err':stderr}  # Return immediately for async execution
 
                 if background:
                     return None, None  # Command is running in the background

@@ -105,3 +105,18 @@ class ImageV4SDK:
         self._created_new = True
         self._task_id = task_id
         return self
+    def remove(self, async_=False):
+        if not self._entity_id:
+            raise ExpError(message="Entity ID is not set")
+        # Call entity specific delete method defined by the SDK
+        fn = getattr(self.images_api, "delete_{0}_by_id".format(self.ENTITY_NAME))
+        response = fn(self._entity_id)
+        task_id = response.to_dict()["data"]["ext_id"]
+        v4_task_obj = V4TaskUtil(self._cluster)
+        # task=v4_task_obj._get_task(self._api_client,task_id)
+        resp = v4_task_obj.wait_for_task_completion(task_id,timeout=2400)
+        if resp.status == "FAILED":
+            raise ExpError(message=resp.error_messages[0].message)
+        INFO("Image %s deleted successfully" % self._name)
+        
+        #

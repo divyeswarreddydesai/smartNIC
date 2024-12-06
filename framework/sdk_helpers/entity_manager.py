@@ -247,7 +247,7 @@ class EntityManager:
         Returns:
         entity_obj(NicProfileV4SDK): NicProfile object
         """
-        ent_obj = NicProfileV4SDK(self.pcvm,self.name_obj_map, **kwargs)
+        ent_obj = NicProfileV4SDK(self.pcvm, **kwargs)
         ent_obj=ent_obj.create()
         
         return ent_obj
@@ -259,10 +259,10 @@ class EntityManager:
         Returns:
         entity_obj(NicProfileAssociationV4SDK): NicProfileAssociation object
         """
-        ent_obj = NicProfileV4SDK(self.pcvm,self.name_obj_map, **kwargs)
-        ent_obj=ent_obj.associate()
+        ent_obj = NicProfileV4SDK(self.pcvm, **kwargs)
+        ent_obj.associate()
         # self.name_id_map[ent_obj._name]=ent_obj
-        return ent_obj
+        return 
     def nic_profile_disassociation_create(self, **kwargs):
         """
         Creates nic profile association using v4 APIs via SDK
@@ -271,10 +271,10 @@ class EntityManager:
         Returns:
         entity_obj(NicProfileAssociationV4SDK): NicProfileAssociation object
         """
-        ent_obj = NicProfileV4SDK(self.pcvm,self.name_obj_map, **kwargs)
-        ent_obj=ent_obj.disassociate()
+        ent_obj = NicProfileV4SDK(self.pcvm, **kwargs)
+        ent_obj.disassociate()
         # self.name_id_map[ent_obj._name]=ent_obj
-        return ent_obj
+        return 
     def vm_create(self, **kwargs):
         """
         Creates vm using v4 APIs via SDK
@@ -479,7 +479,8 @@ class EntityManager:
         for entity in entities:
             self.entities.append(entity)
             result = self.create(**entity)
-            
+            if result is None:
+                continue
                 
             if isinstance(result, list):
                 for res in result:
@@ -501,6 +502,8 @@ class EntityManager:
             result=None
             result = self.create(**entity)
             INFO(result)   
+            if result is None:
+                continue
             if isinstance(result, list):
                 for res in result:
                     if res._created_new:

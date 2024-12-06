@@ -1,0 +1,58 @@
+{
+    "cluster_host_config":{
+        "host_driver":{
+            "location":"provide either a tar path or http link",
+            "commands":[],
+            "driver_name":"give a name to the driver"
+        },
+        "guest_vm_driver":{
+            
+            "use_driver_default":true,
+            "VF_driver_location":"provide either a tar path or http link",
+            "commands":[]
+            
+        },
+        "vm_image":{
+            "use_vm_default":true,
+            "bind":true,
+            "vm_image_location":"http://phx-net-fs.corp.nutanix.com/net-isos/Centos7UVM-2.1.qcow2",
+            "vm_image_name":"vm_image"
+        },
+        "firmware":{
+            "location":"provide either a tar path or http link",
+            "commands":[],
+            "firmware_name":"give a name to the driver"
+        },
+        "vlan_config":{
+            "vlan_id":117,
+            "ip":"10.19.117.0",
+            "prefix_length":24,
+            "default_gateway_ip":"10.19.117.1",
+            "pool_list_ranges":["10.19.117.217 10.19.117.224"]
+        }
+        
+    },
+    "default_config":{
+        
+            "host_driver":{
+                "location":"provide either a tar path or http link",
+                "commands":[],
+                "driver_name":"give a name to the driver"
+            },
+            "guest_vm_driver":{
+
+                "VF_driver_location":"provide either a tar path or http link",
+                "commands":[]
+            },
+            "vm_image":{
+                "bind":false,
+                "vm_image_location":"data/image/vm_image.qcow2",
+                "vm_image_name":"vm_image"},
+            "firmware":{
+                "location":"provide either a tar path or http link",
+                "commands":[],
+                "firmware_name":"give a name to the driver"
+            }
+        
+    }
+}

@@ -11,17 +11,11 @@ class BaseTest:
         # self.entities = self.entity_manager.create_entities()
         # self.setup()
     def setup(self):
-        """
-        Setup method to prepare the test environment.
-        Override this method in the derived class if needed.
-        """
-        INFO("Setting up the test environment.")
-        # Add setup code here
-
+        INFO("setup")
+        ent_mngr=self.setup_obj.get_entity_manager()
+        ent_mngr.create_class_entities(self.class_args)
     def teardown(self):
-        """
-        Teardown method to clean up after tests.
-        Override this method in the derived class if needed.
-        """
-        INFO("Tearing down the test environment.")
-        # Add teardown code here
+        # super().teardown()
+        self.setup_obj.entity_manager.tear_down()
+        # Additional teardown for this specific test
+        INFO("Additional teardown for TestDpOffload.")

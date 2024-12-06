@@ -2,9 +2,17 @@ from ntnx_vmm_py_client import VmApi
 
 from framework.sdk_helpers.utility_v4_task import V4TaskUtil
 from framework.sdk_helpers.subnet import SubnetV4SDK
+from framework.sdk_helpers.nic import NicProfileV4SDK
 from framework.sdk_helpers.image import ImageV4SDK
 from framework.logging.error import ExpError
-from ntnx_vmm_py_client import DiskBusType,ImageReference,DataSource,VmDisk,Disk,DiskAddress,EmulatedNic,EmulatedNicModel,Nic,NicType,NicNetworkInfo,SubnetReference
+from ntnx_vmm_py_client.models.vmm.v4.ahv.config.DiskBusType import DiskBusType
+from ntnx_vmm_py_client.models.vmm.v4.ahv.config.VmDisk import VmDisk
+from ntnx_vmm_py_client.models.vmm.v4.ahv.config.Disk import Disk
+from ntnx_vmm_py_client.models.vmm.v4.ahv.config.DiskAddress import DiskAddress
+from ntnx_vmm_py_client.models.vmm.v4.ahv.config.Nic import Nic
+from ntnx_vmm_py_client.models.vmm.v4.ahv.config.NicNetworkInfo import NicNetworkInfo
+from ntnx_vmm_py_client import ImageReference,DataSource,EmulatedNic,EmulatedNicModel,NicType,SubnetReference
+from ntnx_vmm_py_client import SriovNic,DpOffloadNic,SriovNicNetworkInfo,DpOffloadNicNetworkInfo,NicProfileReference
 from ntnx_vmm_py_client.models.vmm.v4.ahv.config.PowerState import PowerState
 from ntnx_vmm_py_client.models.vmm.v4.ahv.config.Vm import Vm
 from ntnx_vmm_py_client.models.vmm.v4.ahv.config.ClusterReference import ClusterReference
@@ -57,10 +65,14 @@ class VmV4SDK:
             else:
                 raise ExpError(message="Image not found")
         self.vm_spec["disks"]=disk_list
-        subnets=self.vm_spec.get("subnets")
+        subnets=self.vm_spec.get("subnets",[])
         nic_list=[]
         for sub in subnets:
             nic=self.create_nic(sub)
+            nic_list.append(nic)
+        nic_profiles=self.vm_spec.get("nic_profiles",[])
+        for nic_profile in nic_profiles:
+            nic=self.create_nic_with_nic_profile(nic_profile)
             nic_list.append(nic)
         self.vm_spec["nics"]=nic_list
         self.vm_spec["cluster"]=ClusterReference(ext_id=self._cluster.cluster_uuid)
@@ -70,18 +82,23 @@ class VmV4SDK:
         entity_api_client = ImagesApi(cluster.vm_api_client)
         fn = getattr(entity_api_client, "list_{0}s".format("image"))
         response = fn(**kwargs)
+        total_results=response.to_dict()['metadata']['total_available_results']
+        # time.sleep(1)
+        pages=(total_results//100)+1
         if return_json:
             return [entity.to_dict() for entity in response.data or []]
         entities = []
-        for entity in response.data or []:
-            # INFO(entity)
-            try:
-                name = entity.name
-            except AttributeError:
-                name = None
-            uuid = entity.ext_id
-            INFO(uuid)
-            entities.append(ImageV4SDK(cluster, name=name, created_new=False, entity_id=uuid))
+        for i in range(pages):
+            response = fn(_page=i,_limit=100,**kwargs)
+            # response_data = response.to_dict()["data"]
+            # INFO(response_data)
+            for entity in response.data or []:
+                try:
+                    name = entity.name
+                except AttributeError:
+                    name = None
+                uuid = entity.ext_id
+                entities.append(ImageV4SDK(cluster, name=name, created_new=False, entity_id=uuid))
         return entities
     def create_nic(self,subnet_name):
         if subnet_name in self.name_obj_map:
@@ -89,45 +106,57 @@ class VmV4SDK:
             nic=Nic(backing_info=EmulatedNic(model=self.vm_spec.get("nic_model",EmulatedNicModel.VIRTIO)),network_info=NicNetworkInfo(nic_type=self.vm_spec.get("nic_type",NicType.NORMAL_NIC),subnet=SubnetReference(subnet_obj._entity_id)))
             return nic
         else :
-            subnet_list=self.subnet_list(self._cluster)
+            subnet_list=self.subnet_list()
             for subnet_obj in subnet_list:
                 if subnet_obj._name == subnet_name:
                     nic=Nic(backing_info=EmulatedNic(model=self.vm_spec.get("nic_model",EmulatedNicModel.VIRTIO)),network_info=NicNetworkInfo(nic_type=self.vm_spec.get("nic_type",NicType.NORMAL_NIC),subnet=SubnetReference(subnet_obj._entity_id)))
                     return nic
             raise ExpError(message="Subnet not found")
-    def subnet_list( self,cluster, return_json=False, **kwargs):
-        entity_api_client = SubnetsApi(cluster.api_client)
+    def create_nic_with_nic_profile(self,nic_profile_name):
+        nic_data=None
+        if nic_profile_name in self.name_obj_map:
+            nic_profile_obj=self.name_obj_map[nic_profile_name]
+            nic_data=nic_profile_obj.get_nic_profile_details()
+            
+        else :
+            INFO("polling pc for nic profile")
+            nic_profile_list=NicProfileV4SDK.list(self._cluster,self.name_obj_map)
+            INFO("listed nic entities")
+            for nic_profile_obj in nic_profile_list:
+                if nic_profile_obj._name == nic_profile_name:
+                    INFO(nic_profile_name)
+                    nic_data=nic_profile_obj.get_nic_profile_details()
+                    break
+        if nic_data is None:
+            raise ExpError(message="Nic Profile not found")
+        if nic_data['capability_spec']['capability_type']=="SRIOV":
+            nic=Nic(nic_backing_info=SriovNic(sriov_profile_reference=NicProfileReference(ext_id=nic_data['ext_id'])),nic_network_info=SriovNicNetworkInfo())
+            return nic
+        elif nic_data['capability_spec']['capability_type']=="DP_OFFLOAD":
+            nic=Nic(nic_backing_info=DpOffloadNic(dp_offload_profile_reference=NicProfileReference(ext_id=nic_data['ext_id'])),nic_network_info=DpOffloadNicNetworkInfo())
+            return nic
+    def subnet_list( self, return_json=False, **kwargs):
+        entity_api_client = SubnetsApi(self._cluster.api_client)
         fn = getattr(entity_api_client, "list_{0}s".format("subnet"))
         response = fn(**kwargs)
+        total_results=response.to_dict()['metadata']['total_available_results']
+        # time.sleep(1)
+        pages=(total_results//100)+1
         if return_json:
             return [entity.to_dict() for entity in response.data or []]
         entities = []
-        for entity in response.data or []:
-            # INFO(entity)
-            try:
-                name = entity.name
-            except AttributeError:
-                name = None
-            uuid = entity.ext_id
-            
-            entities.append(SubnetV4SDK(cluster, name=name, created_new=False, entity_id=uuid))
-        return entities
-    def nic_list( self,cluster, return_json=False, **kwargs):
-        entity_api_client = SubnetsApi(cluster.api_client)
-        fn = getattr(entity_api_client, "list_{0}s".format("subnet"))
-        response = fn(**kwargs)
-        if return_json:
-            return [entity.to_dict() for entity in response.data or []]
-        entities = []
-        for entity in response.data or []:
-            INFO(entity)
-            try:
-                name = entity.name
-            except AttributeError:
-                name = None
-            uuid = entity.ext_id
-            
-            entities.append(SubnetV4SDK(cluster, name=name, created_new=False, entity_id=uuid))
+        for i in range(pages):
+            response = fn(_page=i,_limit=100,**kwargs)
+            # response_data = response.to_dict()["data"]
+            # INFO(response_data)
+            for entity in response.data or []:
+                try:
+                    name = entity.name
+                except AttributeError:
+                    name = None
+                uuid = entity.ext_id
+                
+                entities.append(SubnetV4SDK(self._cluster, name=name, created_new=False, entity_id=uuid))
         return entities
     def get_by_name(self, name):
         INFO(self.list(self._cluster,self.name_obj_map)[0]._name)
@@ -144,17 +173,24 @@ class VmV4SDK:
         entity_api_client = cls.ENTITY_API_CLIENT(cluster.vm_api_client)
         fn = getattr(entity_api_client, "list_{0}s".format(cls.ENTITY_NAME))
         response = fn(**kwargs)
+        total_results=response.to_dict()['metadata']['total_available_results']
+        # time.sleep(1)
+        pages=(total_results//100)+1
         if return_json:
             return [entity.to_dict() for entity in response.data or []]
         entities = []
-        for entity in response.data or []:
-            try:
-                name = entity.name
-            except AttributeError:
-                name = None
-            uuid = entity.ext_id
-            vm_data=entity.to_dict()
-            entities.append(cls(cluster,map, name=name, created_new=False, entity_id=uuid,vm_data=vm_data))
+        for i in range(pages):
+            response = fn(_page=i,_limit=100,**kwargs)
+            # response_data = response.to_dict()["data"]
+            # INFO(response_data)
+            for entity in response.data or []:
+                try:
+                    name = entity.name
+                except AttributeError:
+                    name = None
+                uuid = entity.ext_id
+                vm_data=entity.to_dict()
+                entities.append(cls(cluster,map, name=name, created_new=False, entity_id=uuid,vm_data=vm_data))
         return entities
     def power_on(self, async_=False):
         if not self._entity_id:
@@ -186,6 +222,21 @@ class VmV4SDK:
         if resp.status == "FAILED":
             raise ExpError(message=resp.error_messages[0].message)
         return self
+    def reboot(self, async_=False):
+        if not self._entity_id:
+            return
+        response=self.vm_api.get_vm_by_id(self._entity_id)
+        # INFO(response)
+        e_tag=ApiClient.get_etag(response)
+        response=self.vm_api.reboot_vm(self._entity_id,if_match=e_tag)
+        if async_:
+            return response.data
+        task_id = response.to_dict()["data"]["ext_id"]
+        v4_task_obj = V4TaskUtil(self._cluster)
+        resp = v4_task_obj.wait_for_task_completion(task_id, timeout=1200)
+        if resp.status == "FAILED":
+            raise ExpError(message=resp.error_messages[0].message)
+        return self
     def create(self, async_=False):
         if self.vm_spec.get("bind"):
             entity = self.get_by_name(self.vm_spec.get("name"))
@@ -196,6 +247,7 @@ class VmV4SDK:
         vm = self.create_payload()
         # nic_list=self.nic_list(self._cluster)
         # INFO(nic_list)
+        INFO(vm)
         response = self.vm_api.create_vm(vm)
         if async_:
             return response.data

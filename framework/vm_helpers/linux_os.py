@@ -109,8 +109,8 @@ class LinuxOperatingSystem(AbstractOperatingSystem):
     self._proxy = proxy
     self._proxy_key = proxy_key
     self._proxy_port = proxy_port
-    INFO(self._username)
-    INFO(self._password)
+    # INFO(self._username)
+    # INFO(self._password)
     if callable(self._pvt_key_path):
       self._pvt_key_path = self._pvt_key_path()
     if callable(self._pvt_key):
@@ -509,6 +509,8 @@ class LinuxOperatingSystem(AbstractOperatingSystem):
                               session_timeout=session_timeout)
       # If ignore_errors is a bool, check if it is True.
       # If ignore_errors is a callable, evaluate it with the result and check.
+      if async_:
+        return result
       if (isinstance(ignore_errors, bool) and ignore_errors
           or callable(ignore_errors) and ignore_errors(result)):
         return result

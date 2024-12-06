@@ -313,6 +313,7 @@ class NetworkingV4SDKEntity:
     self._name = kwargs.get("name")
     # INFO(self.get_by_name(self._name))
     self._data = self.get_by_name(self._name)
+    INFO(self._data)
     self._entity_id = self._data.entity_id
     
     INFO(self._entity_id)

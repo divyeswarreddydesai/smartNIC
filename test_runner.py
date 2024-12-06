@@ -5,14 +5,33 @@ import re
 import argparse
 import logging
 import inspect
+from framework.vm_helpers.consts import *
 from framework.vm_helpers.ssh_client import SSHClient
+from framework.sdk_helpers.image import ImageV4SDK
 from framework.base_class import BaseTest
 from framework.vm_helpers.vm_helpers import SETUP
 from framework.logging.log import INFO,DEBUG,ERROR,RESULT,WARN
 from framework.logging.log_config import setup_logger
 from framework.logging.error import ExpError
+from framework.vm_helpers.linux_os import LinuxOperatingSystem
+import ipaddress
 import os
 test_results={}
+def count_ips_in_range(ip_range):
+        start_ip, end_ip = ip_range.split()
+        start_ip = ipaddress.ip_address(start_ip)
+        end_ip = ipaddress.ip_address(end_ip)
+        return int(end_ip) - int(start_ip) + 1
+
+def validate_pool_list_ranges(lan_data):
+    pool_list_ranges = lan_data.get("pool_list_ranges", [])
+    total_ips = 0
+    for ip_range in pool_list_ranges:
+        total_ips += count_ips_in_range(ip_range)
+    # INFO(total_ips)
+    if total_ips < 4:
+        raise ExpError("The pool_list_ranges field must contain at least 4 IP addresses.")
+ 
 def extract_physical_functions(output):
     physical_functions = []
     pattern = re.compile(r'Physical Function: (\w+):')
@@ -90,8 +109,16 @@ def smart_nic_setup(setup_obj):
                                         supported_capabilities.append(match.group(1))
                                     
                                     return supported_capabilities
+                                def extract_nic_family(output):
+                                    nic_family = []
+                                    pattern = re.compile(r'pci_model_id:\s+"([^"]+)"')
+                                    
+                                    for match in pattern.finditer(output):
+                                        nic_family.append(match.group(1))
+                                    
+                                    return nic_family[0]
                                 setup_obj.cvm.AHV_nic_port_map[i][port]["supported_capabilities"] = extract_supported_capabilities(response)
-                                
+                                setup_obj.cvm.AHV_nic_port_map[i][port]["nic_family"] = extract_nic_family(response)
                             except Exception as e:
                                 ERROR(f"Failed to get nic details: {e}")
                             
@@ -126,11 +153,11 @@ def get_directory_path(directory_name, root_folder='tests'):
         if directory_name in dirs:
             return os.path.join(root, directory_name)
     return None
-def run_tests_in_directory(directory, ssh_client):
+def run_tests_in_directory(directory, ssh_client,host_config):
     for root, sub_dir, files in os.walk(directory):
         for sub in sub_dir:
             sub_directory=os.path.join(directory,sub)
-            run_tests_in_directory(sub_directory, ssh_client)
+            run_tests_in_directory(sub_directory, ssh_client,host_config)
         for file in files:
             # INFO(file)
             if file.endswith(".py"):
@@ -161,6 +188,23 @@ def run_tests_in_directory(directory, ssh_client):
                         class_name = cls.__name__
                         class_config = config.get(class_name, config.get('topology', {}))
                         INFO(f"Using configuration for {class_name}: {class_config}")
+                        lan_data = host_config.get("vlan_config")
+                        validate_pool_list_ranges(lan_data)
+                        configurations = [
+                            {"name": "ext_sub", "is_advanced_networking": False, "is_external": True},
+                            {"name": "bas_sub", "is_advanced_networking": True, "is_external": False}
+                            
+                        ]
+
+                        # Append the configurations to class_config
+                        for configuration in configurations:
+                            lan_data_copy = lan_data.copy()
+                            lan_data_copy.update(configuration)
+                            lan_data_copy['subnet_type'] = "VLAN"
+                            data = {"kind": "subnet", "params": lan_data_copy}
+                            class_config.append(data)
+
+                        INFO(class_config)
                         kwargs={
                             "class_args":class_config,
                             "test_args":{}
@@ -203,7 +247,7 @@ def run_tests_in_directory(directory, ssh_client):
                                 # test_results[test_path] = 'fail'
                                 return
 
-def run_specific_test_case(test_path, ssh_client):
+def run_specific_test_case(test_path, ssh_client,host_config):
     components = test_path.split('.')
     current_path = 'tests'
     config_path = ''
@@ -251,11 +295,28 @@ def run_specific_test_case(test_path, ssh_client):
         INFO(f"Class {remaining_components[0]} not found in module {module_name}.")
         return
     class_name = cls.__name__
-    class_config = config.get(class_name, config.get('topology', {}))
+    class_config = config.get(class_name, config.get('topology', []))
     INFO(f"Using configuration for {class_name}: {class_config}")
+    lan_data = host_config.get("vlan_config")
+    validate_pool_list_ranges(lan_data)
+    configurations = [
+        {"name": "ext_sub", "is_advanced_networking": True, "is_external": True},
+    {"name": "bas_sub", "is_advanced_networking": False, "is_external": False}
     
+    ]
+
+    # Append the configurations to class_config
+    for configuration in configurations:
+        lan_data_copy = lan_data.copy()
+        lan_data_copy.update(configuration)
+        lan_data_copy['subnet_type'] = "VLAN"
+        data = {"kind": "subnet", "params": lan_data_copy}
+        class_config.append(data)
+
+    INFO(class_config)
     function_name = remaining_components[1]
     test_config=config.get(function_name,{})
+    INFO(test_config)
     kwargs={
         "class_args":class_config,
         "test_args":test_config
@@ -275,14 +336,14 @@ def run_specific_test_case(test_path, ssh_client):
             ERROR(f"Error running setup method in {cls.__name__}: {e}")
             test_results[module_name+f".{cls.__name__}"] = 'CLASS setup fail'
             test_results[test_path] = 'fail'
-            if hasattr(instance, 'teardown'):
-                teardown_method = getattr(instance, 'teardown')
-                try:
-                    teardown_method()
-                except (Exception,ExpError)  as e:
-                    ERROR(f"Error running teardown method in {cls.__name__}: {e}")
-                    # test_results[test_path] = 'fail'
-                    return
+            # if hasattr(instance, 'teardown'):
+            #     teardown_method = getattr(instance, 'teardown')
+            #     try:
+            #         teardown_method()
+            #     except (Exception,ExpError)  as e:
+            #         ERROR(f"Error running teardown method in {cls.__name__}: {e}")
+            #         # test_results[test_path] = 'fail'
+            #         return
             return
 
     if hasattr(instance, function_name):
@@ -294,6 +355,10 @@ def run_specific_test_case(test_path, ssh_client):
             test_results[test_path] = 'pass'
         except (Exception,ExpError)  as e:
             ERROR(f"Error running {function_name} in {cls.__name__}: {e}")
+            try:
+                instance.setup_obj.get_entity_manager().test_teardown()
+            except Exception as e:
+                ERROR(f"Failed to teardown entities: {e}")
             test_results[test_path] = 'fail'
     else:
         INFO(f"Function {function_name} not found in class {cls.__name__}.")
@@ -309,6 +374,54 @@ def run_specific_test_case(test_path, ssh_client):
             return
 
 
+def parse_config_and_prep(setup,host_data,skip_driver):
+    config=host_data['cluster_host_config']
+    def_config=host_data['default_config']
+    vm_image_details=config['vm_image']
+    if vm_image_details.get('use_vm_default',False):
+        vm_image_details=def_config['vm_image']
+    if re.match(r'^http[s]?://', vm_image_details['vm_image_location']):       
+        INFO(vm_image_details)
+        vm_args={
+            
+                "name": vm_image_details['vm_image_name'],
+                "bind": vm_image_details.get('bind',False),
+                "source_uri": vm_image_details['vm_image_location'],
+            
+        }
+        
+    else:
+        image_path=os.path.join(os.environ.get('PYTHONPATH'),vm_image_details['vm_image_location'])
+        if not os.path.isfile(image_path):
+            raise ExpError(f"File {image_path} does not exist.")
+        setup.pcvm.transfer_to(image_path, "/home/nutanix")
+        new_ssh=LinuxOperatingSystem(setup.pcvm.ip,username=PCVM_USER, password=PCVM_PASSWORD)
+        new_ssh.execute("cd /home/nutanix")
+        new_ssh.execute("yes | modify_firewall - open -i eth0 -p 8000 -a")
+        new_ssh.execute("timeout 600 python3 -m http.server 8000",async_=True)
+        vm_args={
+            
+                "name": vm_image_details['vm_image_name'],
+                "bind": vm_image_details.get('bind',False),
+                "source_uri": f'http://{setup.pcvm.ip}:8000/vm_image.qcow2'
+            
+        }
+        # setup.pcvm.execute(f"nuclei image.create name={vm_image_details['vm_image_name']} source_uri=http://{setup.pcvm.ip}:8000/vm_image.qcow2 image_type=DISK_IMAGE")
+    
+    image_obj=ImageV4SDK(setup.pcvm,**vm_args)
+    if not vm_image_details.get('bind',False):
+        img_ent=image_obj.get_by_name(vm_image_details['vm_image_name'])
+        if img_ent:
+            img_ent.remove()
+    image_obj.create()
+    new_ssh.execute("fuser -k 8000/tcp")
+    if skip_driver:
+        return
+    
+    
+    
+    
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Test Runner")
     group = parser.add_mutually_exclusive_group(required=True)
@@ -316,30 +429,34 @@ if __name__ == "__main__":
     group.add_argument("--test_dir", type=str, help="Path to a specific test directory to run")
     group.add_argument("--test_func", type=str, help="Name of the test directory to run from the JSON file")
     parser.add_argument("--debug", action="store_true", help="Enable debug mode")
+    parser.add_argument("--use_underlay", action="store_true", help="Use underlay",default=False)
     
     args = parser.parse_args()
     if args.debug:
         setup_logger(True)
     
     setup_path=os.path.join(os.environ.get("PYTHONPATH"),'setup_config.json')
+    host_path=os.path.join(os.environ.get("PYTHONPATH"),'config.json')
     setup_config = load_config(setup_path)
+    host_data=load_config(host_path)
+    host_config = load_config(host_path)['cluster_host_config']
     INFO(setup_config)
-    DEBUG(setup_config)
     setup=SETUP(setup_config["ips"]['pc_ip'],setup_config["ips"]['pe_ip'])
+    # parse_config_and_prep(setup,host_data,args.use_underlay)
     smart_nic_setup(setup)
     tests_folder = 'tests'
 
     if args.run_all:
-        run_tests_in_directory(tests_folder, setup)
+        run_tests_in_directory(tests_folder, setup,host_config)
     elif args.test_dir:
         test_directory = os.path.join(tests_folder, args.test_dir)
         if os.path.isdir(test_directory):
-            run_tests_in_directory(test_directory, setup)
+            run_tests_in_directory(test_directory, setup,host_config)
         else:
             INFO(f"Test directory {test_directory} does not exist.")
     elif args.test_func:
         INFO(f"Running test case {args.test_func}")
-        run_specific_test_case( args.test_func, setup)
+        run_specific_test_case( args.test_func, setup,host_config)
     INFO("Test Results:")
     for test_name, result in test_results.items():
         RESULT(f"{test_name}: {result}")
