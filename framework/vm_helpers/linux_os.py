@@ -235,18 +235,21 @@ class LinuxOperatingSystem(AbstractOperatingSystem):
                 'stderr': stderr}
     DEBUG("localhost <<: %s" % response)
     return response
-  def start_iperf_server(self):
+  def start_iperf_server(self,udp_protocol=False):
         """
         Start the iperf server on the remote VM.
         """
         try:
-            server_command = "iperf3 -s -D"
+            if udp_protocol:
+                server_command = "iperf3 -s -D -u"
+            else:
+                server_command = "iperf3 -s -D"
             result = self.execute(server_command)
             INFO("iperf server started successfully.")
         except ExpError as e:
             ERROR(f"Failed to start iperf server: {e}")
             raise ExpError(f"Failed to start iperf server: {e}")
-  def run_iperf_client(self, server_ip, duration=10, parallel=1):
+  def run_iperf_client(self, server_ip,udp_protocol, duration=10, parallel=1):
         """
         Run the iperf client on the remote VM.
         Args:
@@ -255,7 +258,10 @@ class LinuxOperatingSystem(AbstractOperatingSystem):
         parallel(int): Number of parallel streams
         """
         try:
-            client_command = f"iperf3 -c {server_ip} -t {duration} -P {parallel}"
+            if udp_protocol:
+                client_command = f"iperf3 -c {server_ip} -t {duration} -P {parallel} -u"
+            else:
+                client_command = f"iperf3 -c {server_ip} -t {duration} -P {parallel}"
             result = self.execute(client_command)
             INFO("iperf client ran successfully.")
             INFO(result['stdout'])

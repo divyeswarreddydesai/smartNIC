@@ -28,7 +28,7 @@
       {
         "kind": "nic_profile_association",
         "params": {
-          "nic_profile": "nic_profile_2",
+          "nic_profile": "sriov_nic_profile",
           "host_ip": "",
           "port_name": ""
         }
@@ -43,6 +43,18 @@
           "nic_profile": "sriov_nic_profile",
           "host_ip": "",
           "port_name": ""
+        }
+      }
+    ]
+  },
+  "test_vpc_data": {
+    "topology": [
+      {
+        "kind": "vpc",
+        "params": {
+          "name": "vpc1",
+          "bind": false,
+          "external_subnet_list": ["ext_sub"]
         }
       }
     ]
@@ -86,7 +98,7 @@
       {
         "kind": "vm",
         "params": {
-          "name": "sp.jvmB",
+          "name": "sriov_vm",
           "count": 1,
           "image_name": "vm_image",
           "image_version": "1.0",
@@ -120,7 +132,7 @@
       {
         "kind": "vm",
         "params": {
-          "name": "sp.jvmB",
+          "name": "dp_vm",
           "count": 1,
           "image_name": "vm_image",
           "image_version": "1.0",
@@ -195,6 +207,16 @@
       }
     },
     {
+      "kind":"floating_ip",
+      "params":{
+        "name":"fip1",
+        "vm":"sub1_vm0",
+        "subnet":"ext_sub"
+
+      }
+    },
+    
+    {
       "kind": "vm",
       "params": {
         "name": "sub2.vm",
@@ -203,6 +225,15 @@
         "bind": false,
         "subnets": ["sub2"],
         "nic_profiles": ["dp_offload_nic_profile"]
+      }
+    },
+    {
+      "kind":"floating_ip",
+      "params":{
+        "name":"fip2",
+        "vm":"sub2_vm0",
+        "subnet":"ext_sub"
+
       }
     }
   ]},

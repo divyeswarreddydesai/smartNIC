@@ -4,8 +4,10 @@ from framework.vm_helpers.linux_os import LinuxOperatingSystem
 from framework.vm_helpers.consts import *
 from framework.sdk_helpers.entity_manager import EntityManager
 import pexpect
+import time
+from framework.logging.error import ExpError
 from framework.sdk_helpers.prism_api_client import PrismApiClient
-from framework.logging.log import INFO
+from framework.logging.log import INFO,DEBUG,WARN
 class SETUP:
     def __init__(self, pcvm_ip, cvm_ip, pcvm_username=PCVM_USER, pcvm_password=PCVM_PASSWORD, cvm_username=CVM_USER, cvm_password=CVM_PASSWORD):
         self.pcvm = PCVM(pcvm_ip, pcvm_username, pcvm_password,cvm_ip=cvm_ip)
@@ -69,6 +71,7 @@ class CVM(LinuxOperatingSystem):
         self.ip=ip
         self.AHV_ip_list = self._get_host_ips()
         self.cvm_ip_list=self._get_cvm_ips()
+        self.ipmi_dict = self._get_ipmi_ips()
         self.cvm_obj_dict=self._create_cvm_ssh_clients()
         self.AHV_obj_dict=self._create_ahv_ssh_clients()
         self.AHV_nic_port_map={}
@@ -84,6 +87,14 @@ class CVM(LinuxOperatingSystem):
         INFO(result)
         # raise Exception("Not implemented")
         return result["stdout"].strip().split()
+    def _get_ipmi_ips(self):
+        result=self.execute('ipmiips')
+        # result=self.parse_stdout_to_dict(result["stdout"])
+        INFO(result)
+        impis=result["stdout"].strip().split()
+        impi_dict={ahv_ip:ipmi_ip for ahv_ip,ipmi_ip in zip(self.AHV_ip_list,impis)}
+        # raise Exception("Not implemented")
+        return impi_dict
     def _create_ahv_ssh_clients(self):
         ssh_clients = {}
         for ip in self.AHV_ip_list:
@@ -98,6 +109,64 @@ class CVM(LinuxOperatingSystem):
         return ssh_clients
     def get_ssh_client(self):
         return self._ssh
+    def change_ssh_client(self):
+        for ip in self.cvm_ip_list:
+            if ip!=self.ip:
+                self._ssh=SSHClient(ip, CVM_USER, CVM_PASSWORD)
+                self.ip=ip
+                break
+    def node_power_on(self, ahv_ip, retries=3, timeout=600):
+        attempts = 0
+        node_ipmi_ip = self.ipmi_dict[ahv_ip]
+        cvm_ip=self.cvm_ip_list[self.AHV_ip_list.index(ahv_ip)]
+        if cvm_ip == self.ip:
+            self.change_ssh_client()
+        cmd = "ipmitool -I lanplus -H %s -U %s -P %s chassis power on" % \
+            (node_ipmi_ip, "root",
+            "nutanix/4u")
+        while attempts < retries:
+            try:
+                DEBUG("Trying to power on hypervisor : %s, attempt: %s " %
+                    (self.host_ip, str(attempts + 1)))
+                res = self.execute(cmd, timeout=timeout)
+                break
+            except Exception as exc:
+                if "Unable to establish IPMI v2" in str(exc):
+                    WARN("Failed to establish IPMI connection retrying in 5 seconds")
+                    attempts += 1
+                    time.sleep(5)
+                else:
+                    raise
+
+        if res["status"] != 0 or "On" not in res["stdout"]:
+            raise ExpError("Unable to power on hypervisor "
+                                                "Error %s" % res["stdout"])
+    def node_power_off(self, ahv_ip, retries=3, timeout=600):
+        attempts = 0
+        node_ipmi_ip = self.ipmi_dict[ahv_ip]
+        cvm_ip=self.cvm_ip_list[self.AHV_ip_list.index(ahv_ip)]
+        if cvm_ip == self.ip:
+            self.change_ssh_client()
+        cmd = "ipmitool -I lanplus -H %s -U %s -P %s chassis power off" % \
+            (node_ipmi_ip, "root",
+            "nutanix/4u")
+        while attempts < retries:
+            try:
+                DEBUG("Trying to power off hypervisor : %s, attempt: %s " %
+                    (self.host_ip, str(attempts + 1)))
+                res = self.execute(cmd, timeout=timeout)
+                break
+            except Exception as exc:
+                if "Unable to establish IPMI v2" in str(exc):
+                    WARN("Failed to establish IPMI connection retrying in 5 seconds")
+                    attempts += 1
+                    time.sleep(5)
+                else:
+                    raise
+
+        if res["status"] != 0 or "Off" not in res["stdout"]:
+            raise ExpError("Unable to power off hypervisor "
+                                                "Error %s" % res["stdout"])
 
     def close_connection(self):
         self._ssh.close()

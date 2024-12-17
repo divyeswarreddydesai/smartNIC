@@ -12,6 +12,7 @@ from framework.logging.error import ExpError
 from framework.sdk_helpers.bgp_session import BgpSessionV4SDK
 from framework.sdk_helpers.nic import NicProfileV4SDK
 from collections import OrderedDict
+from framework.vm_helpers.linux_os import LinuxOperatingSystem
 import time
 import ipaddress
 import pickle
@@ -51,6 +52,48 @@ class EntityManager:
         ent_obj=ent_obj.create(**kwargs)
         
         return ent_obj
+    
+    def get_accessible_ip(self,vm_obj):
+        vm_data=vm_obj.get_vm_data()
+        fip_helper=None
+        for obj in self.name_obj_map.values():
+            if obj.ENTITY_NAME=="floating_ip":
+                fip_helper=obj
+                break    
+            
+        vm_nic_id=vm_data["nics"][0]["ext_id"]
+        if not fip_helper:
+            fip_helper=FloatingIpV4SDK(self.pcvm)
+        fip_data=fip_helper.list(self.pcvm)
+        vm_ip=None
+        for fip in fip_data:
+            # INFO(fip._name)
+            # # INFO(fip.vm)
+            # INFO(fip._data)
+            # INFO(vm_data)
+            if fip._data['association']['vm_nic_reference']==vm_nic_id:
+                vm_ip=fip._data['floating_ip']['ipv4']['value']
+                INFO("Floating IP found")
+                break
+        if not vm_ip:
+            INFO(vm_data)
+            vm_ip=vm_data['nics'][0]['network_info']['ipv4_config']['ip_address']['value']
+                
+        if not vm_ip:
+            ERROR("VM IP not found")
+            raise ExpError("VM IP not found, so VM is not reachable")
+        return vm_ip
+    def guest_vm_driver_create(self, **kwargs):
+        for obj in self.name_obj_map.values():
+            if obj.ENTITY_NAME=="vm":
+                ip=self.get_accessible_ip(obj)
+                lin_obj=LinuxOperatingSystem(ip,username="centos",password="nutanix/4u")
+                driver_path=kwargs.get("VF_driver_location")
+                lin_obj.transfer_to(driver_path,"/tmp")
+                commands=kwargs.get("commands")
+                for cmd in commands:
+                    lin_obj.execute(cmd)
+                
     def bgp_session_create(self, **kwargs):
         """
         Creates BGP Session using v4 APIs via SDK. Use this method to resolve the
@@ -472,7 +515,23 @@ class EntityManager:
             return create_function(**params)
         else:
             raise ValueError(f"No create function found for kind: {kind}")
-    
+    def create_entities(self, entities):
+        results = {}
+        for entity in entities:
+            self.entities.append(entity)
+            result = self.create(**entity)
+            if result is None:
+                continue
+                
+            if isinstance(result, list):
+                for res in result:
+                    if res._created_new:
+                        results[res._name] = res
+            else:
+                if result._created_new:
+                    results[result._name] = result
+            
+        return results
     def create_test_entities(self, entities):
 
         
@@ -518,6 +577,22 @@ class EntityManager:
             #     ERROR(f"Failed to create {entity}: {e}")
             #     results.append(None)
         return self.class_setup_obj_map
+    def remove_entities(self, entities):
+        retries=3
+        for name,entity in reversed(entities.items()):
+            for attempt in range(retries):
+                try:
+                    if hasattr(entity, 'remove'):
+                        entity.remove()
+                    INFO(f"Removed entity: {name}")
+                    # self.name_id_map.pop(name)
+                    break  # Exit the retry loop if successful
+                except Exception as e:
+                    if attempt < retries - 1:
+                        INFO(f"Failed to remove entity {name}, retrying... ({attempt + 1}/{retries})")
+                        # time.sleep(delay)
+                    else:
+                        raise ExpError(f"Failed to remove entity {name} after {retries} attempts: {e}")
     def test_teardown(self):
         retries=3
         to_remove = []
@@ -535,6 +610,13 @@ class EntityManager:
                         INFO(f"Failed to remove entity {name}, retrying... ({attempt + 1}/{retries})")
                         # time.sleep(delay)
                     else:
+                        for name in to_remove:
+                            try:
+                                
+                                self.test_setup_obj_map.pop(name)
+                                self.name_obj_map.pop(name)
+                            except Exception as e:
+                                ERROR(f"no entity found {name}: {e}")
                         raise ExpError(f"Failed to remove entity {name} after {retries} attempts: {e}")
         for name in to_remove:
             try:

@@ -1,0 +1,675 @@
+{
+  "test_sriov_nic_profile_CRUD": {
+    "topology": [
+      {
+        "kind": "nic_profile",
+        "params": {
+          "name": "sriov_nic_profile",
+          "description": "sriov NIC profile",
+          "capabilityType": "SRIOV",
+          "numVFs": 10,
+          "nic_family": "someNicFamily"
+        }
+      }
+    ]
+  },
+  "test_dp_offload_nic_profile_CRUD": {
+    "topology": [
+      {
+        "kind": "nic_profile",
+        "params": {
+          "name": "dp_offload_nic_profile",
+          "description": "dp offload NIC profile",
+          "capabilityType": "DPOFFLOAD",
+          "nic_family": "someNicFamily"
+        }
+      }
+    ]
+  },
+  "test_attach_sriov_nic_profile": {
+    "topology": [
+      {
+        "kind": "nic_profile",
+        "params": {
+          "name": "sriov_nic_profile_test",
+          "description": "NIC Profile with SRIOV",
+          "capabilityType": "SRIOV",
+          "numVFs": 10,
+          "nic_family": "someNicFamily"
+        }
+      },
+      {
+        "kind": "nic_profile_association",
+        "params": {
+          "nic_profile": "sriov_nic_profile_test",
+          "host_ip": "",
+          "port_name": ""
+        }
+      },
+      {
+        "kind": "vm",
+        "params": {
+          "name": "sriov_vm",
+          "count": 1,
+          "image_name": "vm_image",
+          "image_version": "1.0",
+          "wait_for_ip": false,
+          "bind": true,
+          "nic_profiles": ["sriov_nic_profile_test"]
+        }
+      }
+    ]
+  },
+  "test_attach_dp_offload_nic_profile": {
+    "topology": [
+      {
+        "kind": "nic_profile",
+        "params": {
+          "name": "dp_offload_nic_profile",
+          "description": "NIC Profile with DP_OFFLOAD",
+          "capabilityType": "DP_OFFLOAD",
+          "numVFs": 10,
+          "nic_family": "someNicFamily"
+        }
+      },
+      {
+        "kind": "nic_profile_association",
+        "params": {
+          "nic_profile": "dp_offload_nic_profile",
+          "host_ip": "",
+          "port_name": ""
+        }
+      },
+      {
+        "kind": "vm",
+        "params": {
+          "name": "dp_vm",
+          "count": 1,
+          "image_name": "vm_image",
+          "image_version": "1.0",
+          "wait_for_ip": false,
+          "bind": true,
+          "nic_profiles": ["dp_offload_nic_profile"]
+        }
+      }
+    ]
+  },
+  "test_ew_traffic_with_dp_offload": {
+    "topology": [
+      
+      {
+        "kind": "vpc",
+        "params": {
+          "name": "dp_vpc",
+          "bind": false,
+          "external_subnet_list": ["ext_sub"]
+        }
+      },
+      {
+        "kind": "subnet",
+        "params": {
+          "name": "sub1",
+          "bind": false,
+          "virtual_networks": ["dp_vpc"],
+          "prefix_length": 24,
+          "ip": "172.16.19.0",
+          "default_gateway_ip": "172.16.19.1",
+          "pool_list_ranges": ["172.16.19.10 172.16.19.100"]
+        }
+      },
+      {
+        "kind": "subnet",
+        "params": {
+          "name": "sub2",
+          "bind": false,
+          "virtual_networks": ["dp_vpc"],
+          "prefix_length": 24,
+          "ip": "172.16.29.0",
+          "default_gateway_ip": "172.16.29.1",
+          "pool_list_ranges": ["172.16.29.10 172.16.29.100"]
+        }
+      },
+      {
+        "kind": "vm",
+        "params": {
+          "name": "sub1.vm",
+          "count": 1,
+          "image_name": "vm_image",
+          "bind": false,
+          "subnets": ["sub1"],
+          "traffic_subnet": "sub1",
+          "nic_profiles": ["dp_offload_nic_profile"]
+        }
+      },
+      {
+        "kind": "floating_ip",
+        "params": {
+          "name": "fip1",
+          "vm": "sub1.vm0",
+          "subnet": "ext_sub"
+        }
+      },
+
+      {
+        "kind": "vm",
+        "params": {
+          "name": "sub2.vm",
+          "count": 1,
+          "image_name": "vm_image",
+          "bind": false,
+          "subnets": ["sub2"],
+          "traffic_subnet": "sub2",
+          "nic_profiles": ["dp_offload_nic_profile"]
+        }
+      },
+      {
+        "kind": "floating_ip",
+        "params": {
+          "name": "fip2",
+          "vm": "sub2.vm0",
+          "subnet": "ext_sub"
+        }
+      }
+    ]
+  },
+  "test_dp_offload_for_fip": {
+    "topology": [
+      {
+        "kind": "nic_profile",
+        "params": {
+          "name": "dp_offload_nic_profile",
+          "description": "NIC Profile with DP_OFFLOAD",
+          "capabilityType": "DPOFFLOAD",
+          "numVFs": 10,
+          "nic_family": "someNicFamily"
+        }
+      },
+      {
+        "kind": "nic_profile_association",
+        "params": {
+          "nic_profile": "dp_offload_nic_profile",
+          "host_ip": "",
+          "port_name": ""
+        }
+      },
+      {
+        "kind": "vpc",
+        "params": {
+          "name": "dp_vpc",
+          "bind": false,
+          "external_subnet_list": ["ext_sub"]
+        }
+      },
+      {
+        "kind": "subnet",
+        "params": {
+          "name": "sub1",
+          "bind": false,
+          "virtual_networks": ["dp_vpc"],
+          "prefix_length": 24,
+          "ip": "172.16.19.0",
+          "default_gateway_ip": "172.16.19.1",
+          "pool_list_ranges": ["172.16.19.10 172.16.19.100"]
+        }
+      },
+      {
+        "kind": "vm",
+        "params": {
+          "name": "sub1.vm",
+          "count": 1,
+          "image_name": "vm_image",
+          "bind": false,
+          "subnets": ["sub1"],
+          "nic_profiles": ["dp_offload_nic_profile"]
+        }
+      },
+      {
+        "kind": "floating_ip",
+        "params": {
+          "name": "fip1",
+          "vm": "sub1_vm0",
+          "subnet": "ext_sub"
+        }
+      },
+      {
+        "kind": "vm",
+        "params": {
+          "name": "bas_sub.vm",
+          "count": 1,
+          "image_name": "vm_image",
+          "bind": false,
+          "subnets": ["bas_sub"],
+          "nic_profiles": ["dp_offload_nic_profile"]
+        }
+      }
+    ]
+  },
+  "test_dp_offload_datapath_with_vpc_attached_to_nat": {
+    "topology": [
+      {
+        "kind": "nic_profile",
+        "params": {
+          "name": "dp_offload_nic_profile",
+          "description": "NIC Profile with DP_OFFLOAD",
+          "capabilityType": "DPOFFLOAD",
+          "numVFs": 10,
+          "nic_family": "someNicFamily"
+        }
+      },
+      {
+        "kind": "nic_profile_association",
+        "params": {
+          "nic_profile": "dp_offload_nic_profile",
+          "host_ip": "",
+          "port_name": ""
+        }
+      },
+      {
+        "kind": "vpc",
+        "params": {
+          "name": "dp_vpc",
+          "bind": false,
+          "external_subnet_list": ["ext_sub"]
+        }
+      },
+      {
+        "kind": "subnet",
+        "params": {
+          "name": "sub1",
+          "bind": false,
+          "virtual_networks": ["dp_vpc"],
+          "prefix_length": 24,
+          "ip": "172.16.19.0",
+          "default_gateway_ip": "172.16.19.1",
+          "pool_list_ranges": ["172.16.19.10 172.16.19.100"]
+        }
+      },
+      {
+        "kind": "vm",
+        "params": {
+          "name": "sub1.vm",
+          "count": 1,
+          "image_name": "vm_image",
+          "bind": false,
+          "subnets": ["sub1"],
+          "nic_profiles": ["dp_offload_nic_profile"]
+        }
+      },
+      {
+        "kind": "floating_ip",
+        "params": {
+          "name": "fip1",
+          "vm": "sub1_vm0",
+          "subnet": "ext_sub"
+        }
+      },
+      {
+        "kind": "vm",
+        "params": {
+          "name": "bas_sub.vm",
+          "count": 1,
+          "image_name": "vm_image",
+          "bind": false,
+          "subnets": ["bas_sub"],
+          "nic_profiles": ["dp_offload_nic_profile"]
+        }
+      }
+    ]
+  },
+  "test_vm_ops_for_dp_offloaded_entities":{
+    "topology":[
+      {
+        "kind": "nic_profile",
+        "params": {
+          "name": "sriov_nic_profile",
+          "description": "NIC Profile with SRIOV",
+          "capabilityType": "SRIOV",
+          "numVFs": 10,
+          "nic_family": "someNicFamily"
+        }
+      },
+      {
+        "kind": "nic_profile_association",
+        "params": {
+          "nic_profile": "sriov_nic_profile",
+          "host_ip": "",
+          "port_name": ""
+        }
+      },
+      {
+        "kind": "nic_profile",
+        "params": {
+          "name": "dp_offload_nic_profile",
+          "description": "NIC Profile with DP_OFFLOAD",
+          "capabilityType": "DP_OFFLOAD",
+          "numVFs": 10,
+          "nic_family": "someNicFamily"
+        }
+      },
+      {
+        "kind": "nic_profile_association",
+        "params": {
+          "nic_profile": "dp_offload_nic_profile",
+          "host_ip": "",
+          "port_name": ""
+        }
+      },
+      {
+        "kind": "vpc",
+        "params": {
+          "name": "dp_vpc",
+          "bind": false,
+          "external_subnet_list": ["ext_sub"]
+        }
+      },
+      {
+        "kind": "subnet",
+        "params": {
+          "name": "sub1",
+          "bind": false,
+          "virtual_networks": ["dp_vpc"],
+          "prefix_length": 24,
+          "ip": "172.16.19.0",
+          "default_gateway_ip": "172.16.19.1",
+          "pool_list_ranges": ["172.16.19.10 172.16.19.100"]
+        }
+      },
+      {
+        "kind": "subnet",
+        "params": {
+          "name": "sub2",
+          "bind": false,
+          "virtual_networks": ["dp_vpc"],
+          "prefix_length": 24,
+          "ip": "172.16.29.0",
+          "default_gateway_ip": "172.16.29.1",
+          "pool_list_ranges": ["172.16.29.10 172.16.29.100"]
+        }
+      },
+      {
+        "kind": "vm",
+        "params": {
+          "name": "sub1.vm",
+          "count": 1,
+          "image_name": "vm_image",
+          "bind": false,
+          "subnets": ["sub1"],
+          "nic_profiles": ["dp_offload_nic_profile"]
+        }
+      },
+      {
+        "kind": "vm",
+        "params": {
+          "name": "sub2.vm",
+          "count": 1,
+          "image_name": "vm_image",
+          "bind": false,
+          "subnets": ["sub2"],
+          "nic_profiles": ["dp_offload_nic_profile"]
+        }
+      },
+      {
+        "kind":"vm",
+        "params":{
+          "name":"bas_sub.vm",
+          "count":1,
+          "image_name":"vm_image",
+          "bind":false,
+          "subnets":["bas_sub"],
+          "nic_profiles":["dp_offload_nic_profile"]
+        }
+      }
+
+    ]
+  },
+  "test_data_path_ovn_controller_is_down":{
+    "topology":[
+      {
+        "kind": "nic_profile",
+        "params": {
+          "name": "sriov_nic_profile",
+          "description": "NIC Profile with SRIOV",
+          "capabilityType": "SRIOV",
+          "numVFs": 10,
+          "nic_family": "someNicFamily"
+        }
+      },
+      {
+        "kind": "nic_profile_association",
+        "params": {
+          "nic_profile": "sriov_nic_profile",
+          "host_ip": "",
+          "port_name": ""
+        }
+      },
+      {
+        "kind": "nic_profile",
+        "params": {
+          "name": "dp_offload_nic_profile",
+          "description": "NIC Profile with DP_OFFLOAD",
+          "capabilityType": "DP_OFFLOAD",
+          "numVFs": 10,
+          "nic_family": "someNicFamily"
+        }
+      },
+      {
+        "kind": "nic_profile_association",
+        "params": {
+          "nic_profile": "dp_offload_nic_profile",
+          "host_ip": "",
+          "port_name": ""
+        }
+      },
+      {
+        "kind": "vpc",
+        "params": {
+          "name": "dp_vpc",
+          "bind": false,
+          "external_subnet_list": ["ext_sub"]
+        }
+      },
+      {
+        "kind": "subnet",
+        "params": {
+          "name": "sub1",
+          "bind": false,
+          "virtual_networks": ["dp_vpc"],
+          "prefix_length": 24,
+          "ip": "172.16.19.0",
+          "default_gateway_ip": "172.16.19.1",
+          "pool_list_ranges": ["172.16.19.10 172.16.19.100"]
+        }
+      },
+      {
+        "kind": "subnet",
+        "params": {
+          "name": "sub2",
+          "bind": false,
+          "virtual_networks": ["dp_vpc"],
+          "prefix_length": 24,
+          "ip": "172.16.29.0",
+          "default_gateway_ip": "172.16.29.1",
+          "pool_list_ranges": ["172.16.29.10 172.16.29.100"]
+        }
+      },
+      {
+        "kind": "vm",
+        "params": {
+          "name": "sub1.vm",
+          "count": 1,
+          "image_name": "vm_image",
+          "bind": false,
+          "subnets": ["sub1"],
+          "nic_profiles": ["dp_offload_nic_profile"]
+        }
+      },
+      {
+        "kind": "vm",
+        "params": {
+          "name": "sub2.vm",
+          "count": 1,
+          "image_name": "vm_image",
+          "bind": false,
+          "subnets": ["sub2"],
+          "nic_profiles": ["dp_offload_nic_profile"]
+        }
+      },
+      {
+        "kind":"vm",
+        "params":{
+          "name":"bas_sub.vm",
+          "count":1,
+          "image_name":"vm_image",
+          "bind":false,
+          "subnets":["bas_sub"],
+          "nic_profiles":["dp_offload_nic_profile"]
+        }
+      }
+
+    ]
+  },
+  "test_dp_offload_with_process_restart":{
+    "topology":[
+      {
+        "kind": "nic_profile",
+        "params": {
+          "name": "sriov_nic_profile",
+          "description": "NIC Profile with SRIOV",
+          "capabilityType": "SRIOV",
+          "numVFs": 10,
+          "nic_family": "someNicFamily"
+        }
+      },
+      {
+        "kind": "nic_profile_association",
+        "params": {
+          "nic_profile": "sriov_nic_profile",
+          "host_ip": "",
+          "port_name": ""
+        }
+      },
+      {
+        "kind": "nic_profile",
+        "params": {
+          "name": "dp_offload_nic_profile",
+          "description": "NIC Profile with DP_OFFLOAD",
+          "capabilityType": "DP_OFFLOAD",
+          "numVFs": 10,
+          "nic_family": "someNicFamily"
+        }
+      },
+      {
+        "kind": "nic_profile_association",
+        "params": {
+          "nic_profile": "dp_offload_nic_profile",
+          "host_ip": "",
+          "port_name": ""
+        }
+      },
+      {
+        "kind": "vpc",
+        "params": {
+          "name": "dp_vpc",
+          "bind": false,
+          "external_subnet_list": ["ext_sub"]
+        }
+      },
+      {
+        "kind": "subnet",
+        "params": {
+          "name": "sub1",
+          "bind": false,
+          "virtual_networks": ["dp_vpc"],
+          "prefix_length": 24,
+          "ip": "172.16.19.0",
+          "default_gateway_ip": "172.16.19.1",
+          "pool_list_ranges": ["172.16.19.10 172.16.19.100"]
+        }
+      },
+      {
+        "kind": "subnet",
+        "params": {
+          "name": "sub2",
+          "bind": false,
+          "virtual_networks": ["dp_vpc"],
+          "prefix_length": 24,
+          "ip": "172.16.29.0",
+          "default_gateway_ip": "172.16.29.1",
+          "pool_list_ranges": ["172.16.29.10 172.16.29.100"]
+        }
+      },
+      {
+        "kind": "vm",
+        "params": {
+          "name": "sub1.vm",
+          "count": 1,
+          "image_name": "vm_image",
+          "bind": false,
+          "subnets": ["sub1"],
+          "nic_profiles": ["dp_offload_nic_profile"]
+        }
+      },
+      {
+        "kind": "vm",
+        "params": {
+          "name": "sub2.vm",
+          "count": 1,
+          "image_name": "vm_image",
+          "bind": false,
+          "subnets": ["sub2"],
+          "nic_profiles": ["dp_offload_nic_profile"]
+        }
+      },
+      {
+        "kind":"vm",
+        "params":{
+          "name":"bas_sub.vm",
+          "count":1,
+          "image_name":"vm_image",
+          "bind":false,
+          "subnets":["bas_sub"],
+          "nic_profiles":["dp_offload_nic_profile"]
+        }
+      }
+
+    ],
+    "add_topology":[
+      {
+        "kind":"nic_profile",
+        "params":{
+          "name":"dp_offload_nic_profile_test",
+          "description":"NIC Profile with DP_OFFLOAD",
+          "capabilityType":"DP_OFFLOAD",
+          "numVFs":10,
+          "nic_family":"someNicFamily"
+        }
+      },
+      {
+        "kind":"nic_profile_association",
+        "params":{
+          "nic_profile":"dp_offload_nic_profile_test",
+          "host_ip":"",
+          "port_name":""
+        }
+      },
+      {
+        "kind":"nic_profile",
+        "params":{
+          "name":"sriov_nic_profile_test",
+          "description":"NIC Profile with SRIOV",
+          "capabilityType":"SRIOV",
+          "numVFs":10,
+          "nic_family":"someNicFamily"
+        }
+      },
+      {
+        "kind":"nic_profile_association",
+        "params":{
+          "nic_profile":"sriov_nic_profile_test",
+          "host_ip":"",
+          "port_name":""
+        }
+      }    
+    ]
+  }
+}

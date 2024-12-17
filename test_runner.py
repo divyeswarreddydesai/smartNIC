@@ -14,6 +14,7 @@ from framework.logging.log import INFO,DEBUG,ERROR,RESULT,WARN
 from framework.logging.log_config import setup_logger
 from framework.logging.error import ExpError
 from framework.vm_helpers.linux_os import LinuxOperatingSystem
+from packaging import version
 import ipaddress
 import os
 test_results={}
@@ -42,7 +43,7 @@ def extract_physical_functions(output):
             physical_functions.append(match.group(1))
     
     return physical_functions
-def smart_nic_setup(setup_obj):
+def smart_nic_setup(setup_obj,skip_driver):
         INFO("came to setup")
         # ent_mngr=self.setup_obj.get_entity_manager()
         # ent_mngr.create_entities(self.class_args)
@@ -117,7 +118,35 @@ def smart_nic_setup(setup_obj):
                                         nic_family.append(match.group(1))
                                     
                                     return nic_family[0]
+                                def extract_firmware_version(output):
+                                    firmware_version = []
+                                    pattern = re.compile(r'firmware_version:\s+"([^"]+)"')
+                                    
+                                    for match in pattern.finditer(output):
+                                        firmware_version.append(match.group(1))
+                                    
+                                    return firmware_version
+                                def extract_driver_version(output):
+                                    driver_version = []
+                                    pattern = re.compile(r'driver_version:\s+"([^"]+)"')
+                                    
+                                    for match in pattern.finditer(output):
+                                        driver_version.append(match.group(1))
+                                    
+                                    return driver_version
+                                
                                 setup_obj.cvm.AHV_nic_port_map[i][port]["supported_capabilities"] = extract_supported_capabilities(response)
+                                if len(setup_obj.cvm.AHV_nic_port_map[i][port]["supported_capabilities"])>0 and not skip_driver:
+                                    firm=extract_firmware_version(response)
+                                    min_firm="22.41.1000 (MT_0000000437)"
+                                    if version.parse(firm[0])<version.parse(min_firm):
+                                        ERROR(f"Minimum firmware version required is {min_firm}. Current firmware version is {firm[0]}.")
+                                        raise ExpError(f"Minimum firmware version required is {min_firm}. Current firmware version is {firm[0]}.If you would still like to run it use --use_underlay flag")
+                                    driver_version=extract_driver_version(response)
+                                    min_driver="mlx5_core:23.10-3.2.2"
+                                    if version.parse(driver_version[0])<version.parse(min_driver):
+                                        ERROR(f"Minimum driver version required is {min_driver}. Current driver version is {driver_version[0]}.")
+                                        raise ExpError(f"Minimum driver version required is {min_driver}. Current driver version is {driver_version[0]}.If you would still like to run it use --use_underlay flag")
                                 setup_obj.cvm.AHV_nic_port_map[i][port]["nic_family"] = extract_nic_family(response)
                             except Exception as e:
                                 ERROR(f"Failed to get nic details: {e}")
@@ -153,14 +182,15 @@ def get_directory_path(directory_name, root_folder='tests'):
         if directory_name in dirs:
             return os.path.join(root, directory_name)
     return None
-def run_tests_in_directory(directory, ssh_client,host_config):
+def run_tests_in_directory(directory, ssh_client,host_config,skip_driver):
     for root, sub_dir, files in os.walk(directory):
         for sub in sub_dir:
             sub_directory=os.path.join(directory,sub)
-            run_tests_in_directory(sub_directory, ssh_client,host_config)
+            run_tests_in_directory(sub_directory, ssh_client,host_config,skip_driver)
         for file in files:
             # INFO(file)
             if file.endswith(".py"):
+                INFO(file)
                 module_path = os.path.join(directory, file)
                 config_file = os.path.join(directory, 'config.json')
                 if os.path.isfile(config_file):
@@ -183,27 +213,46 @@ def run_tests_in_directory(directory, ssh_client,host_config):
                 # INFO(directory)
                 for name, obj in inspect.getmembers(module):
                     # INFO(name)
-                    if inspect.isclass(obj) and name!="BaseTest":
+                    if inspect.isclass(obj) and obj.__module__ == module_name:
                         cls = obj
                         class_name = cls.__name__
-                        class_config = config.get(class_name, config.get('topology', {}))
+                        class_config = config.get(class_name, config.get('topology', []))
                         INFO(f"Using configuration for {class_name}: {class_config}")
                         lan_data = host_config.get("vlan_config")
+                        nic_data = host_config.get("nic_config")
+                        guest_driver_data = host_config.get("guest_vm_driver")
                         validate_pool_list_ranges(lan_data)
                         configurations = [
-                            {"name": "ext_sub", "is_advanced_networking": False, "is_external": True},
-                            {"name": "bas_sub", "is_advanced_networking": True, "is_external": False}
+                            {"name": "ext_sub", "is_advanced_networking": True, "is_external": True},
+                            {"name": "bas_sub", "is_advanced_networking": False, "is_external": False}
                             
                         ]
 
                         # Append the configurations to class_config
+                        driver_data={
+                            "kind": "guest_vm_driver",
+                            "params": guest_driver_data
+                        }
                         for configuration in configurations:
                             lan_data_copy = lan_data.copy()
                             lan_data_copy.update(configuration)
                             lan_data_copy['subnet_type'] = "VLAN"
                             data = {"kind": "subnet", "params": lan_data_copy}
+                            INFO(class_config)
                             class_config.append(data)
-
+                        if not skip_driver:
+                            class_config.append(driver_data)
+                        if nic_data.get('nic_family',"")!="":
+                            for conf in class_config:
+                                if conf.get('kind',"")=="nic_profile":
+                                    conf['params']['nic_family']=nic_data['nic_family']
+                            
+                        if nic_data.get("port","")!="" or nic_data.get("host_ip","")!="":
+                            for conf in class_config:
+                                if conf.get('kind',"")=="nic_profile_association" or conf.get('kind',"")=="nic_profile_disassociation":
+                                    conf['params']['port_name']=nic_data['port']
+                                    conf['params']['host_ip']=nic_data['host_ip']
+                            
                         INFO(class_config)
                         kwargs={
                             "class_args":class_config,
@@ -228,9 +277,29 @@ def run_tests_in_directory(directory, ssh_client,host_config):
                             if hasattr(instance, function_name):
                                 method = getattr(instance, function_name)
                                 try:
-                                    instance.test_args=config.get(function_name,{})
+                                    test_args=config.get(function_name,{})
+                                    test_config=test_args.get("topology",[])
+                                    if nic_data.get('nic_family',"")!="":
+                                        for conf in test_config:
+                                            if conf.get('kind',"")=="nic_profile":
+                                                conf['params']['nic_family']=nic_data['nic_family']
+                                        
+                                    if nic_data.get("port","")!="" or nic_data.get("host_ip","")!="":
+                                        for conf in test_config:
+                                            if conf.get('kind',"")=="nic_profile_association" or conf.get('kind',"")=="nic_profile_disassociation":
+                                                conf['params']['port_name']=nic_data['port']
+                                                conf['params']['host_ip']=nic_data['host_ip']
+                                    if not skip_driver:
+                                        test_config.append(driver_data)
+                                    test_args["topology"]=test_config
+                                    instance.test_args=test_args
+                                    INFO("-"*50)
+                                    INFO(f"Running {function_name} in {cls.__name__}")
+                                    INFO("-"*50)
                                     method()
+                                    INFO("-"*50)
                                     INFO(f"Ran {function_name} in {cls.__name__}")
+                                    INFO("-"*50)
                                     test_results[function_name] = 'pass'
                                 except (Exception,ExpError) as e:
                                     ERROR(f"Error running {function_name} in {cls.__name__}: {e}")
@@ -247,7 +316,7 @@ def run_tests_in_directory(directory, ssh_client,host_config):
                                 # test_results[test_path] = 'fail'
                                 return
 
-def run_specific_test_case(test_path, ssh_client,host_config):
+def run_specific_test_case(test_path, ssh_client,host_config,skip_driver):
     components = test_path.split('.')
     current_path = 'tests'
     config_path = ''
@@ -277,7 +346,7 @@ def run_specific_test_case(test_path, ssh_client,host_config):
     module_name = current_path.replace(os.sep, '.').rstrip('.py')
     
     remaining_components = components[i+1:]
-    
+    INFO(module_name)
     try:
         module = importlib.import_module(module_name)
     except ImportError as e:
@@ -298,6 +367,8 @@ def run_specific_test_case(test_path, ssh_client,host_config):
     class_config = config.get(class_name, config.get('topology', []))
     INFO(f"Using configuration for {class_name}: {class_config}")
     lan_data = host_config.get("vlan_config")
+    nic_data = host_config.get("nic_config")
+    guest_driver_data = host_config.get("guest_vm_driver")
     validate_pool_list_ranges(lan_data)
     configurations = [
         {"name": "ext_sub", "is_advanced_networking": True, "is_external": True},
@@ -312,10 +383,37 @@ def run_specific_test_case(test_path, ssh_client,host_config):
         lan_data_copy['subnet_type'] = "VLAN"
         data = {"kind": "subnet", "params": lan_data_copy}
         class_config.append(data)
-
-    INFO(class_config)
+    driver_data={
+        "kind": "guest_vm_driver",
+        "params": guest_driver_data
+    }
+    if not skip_driver:
+        class_config.append(driver_data)
+    
     function_name = remaining_components[1]
-    test_config=config.get(function_name,{})
+    test_args=config.get(function_name,{})
+    test_config=test_args.get("topology",[])
+    if nic_data.get('nic_family',"")!="":
+        for conf in class_config:
+            if conf.get('kind',"")=="nic_profile":
+                conf['params']['nic_family']=nic_data['nic_family']
+        for conf in test_config:
+            if conf.get('kind',"")=="nic_profile":
+                conf['params']['nic_family']=nic_data['nic_family']  
+    if nic_data.get("port","")!="" or nic_data.get("host_ip","")!="":
+        for conf in class_config:
+            if conf.get('kind',"")=="nic_profile_association" or conf.get('kind',"")=="nic_profile_disassociation" or conf.get('kind',"")=="nic_profile" :
+                conf['params']['port_name']=nic_data['port']
+                conf['params']['host_ip']=nic_data['host_ip']
+        for conf in test_config:
+            if conf.get('kind',"")=="nic_profile_association" or conf.get('kind',"")=="nic_profile_disassociation" or conf.get('kind',"")=="nic_profile":
+                conf['params']['port_name']=nic_data['port']
+                conf['params']['host_ip']=nic_data['host_ip']
+    if not skip_driver:
+        test_config.append(driver_data)
+    test_args["topology"]=test_config
+    
+    INFO(class_config)
     INFO(test_config)
     kwargs={
         "class_args":class_config,
@@ -357,6 +455,7 @@ def run_specific_test_case(test_path, ssh_client,host_config):
             ERROR(f"Error running {function_name} in {cls.__name__}: {e}")
             try:
                 instance.setup_obj.get_entity_manager().test_teardown()
+                INFO("teardown on fail")
             except Exception as e:
                 ERROR(f"Failed to teardown entities: {e}")
             test_results[test_path] = 'fail'
@@ -380,6 +479,7 @@ def parse_config_and_prep(setup,host_data,skip_driver):
     vm_image_details=config['vm_image']
     if vm_image_details.get('use_vm_default',False):
         vm_image_details=def_config['vm_image']
+    INFO(vm_image_details) 
     if re.match(r'^http[s]?://', vm_image_details['vm_image_location']):       
         INFO(vm_image_details)
         vm_args={
@@ -389,9 +489,12 @@ def parse_config_and_prep(setup,host_data,skip_driver):
                 "source_uri": vm_image_details['vm_image_location'],
             
         }
-        
+    
     else:
-        image_path=os.path.join(os.environ.get('PYTHONPATH'),vm_image_details['vm_image_location'])
+        if vm_image_details.get('use_vm_default',True):
+            image_path=os.path.join(os.environ.get('PYTHONPATH'),vm_image_details['vm_image_location'])
+        else:
+            image_path=vm_image_details['vm_image_location']
         if not os.path.isfile(image_path):
             raise ExpError(f"File {image_path} does not exist.")
         setup.pcvm.transfer_to(image_path, "/home/nutanix")
@@ -425,38 +528,42 @@ def parse_config_and_prep(setup,host_data,skip_driver):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Test Runner")
     group = parser.add_mutually_exclusive_group(required=True)
-    group.add_argument("--run_all", action="store_true", help="Run all tests set to true in the JSON file")
+    group.add_argument("--run_all", action="store_true", help="Run all tests")
+    group.add_argument("--run_sanity", action="store_true", help="Run all tests from the sanity directory")
     group.add_argument("--test_dir", type=str, help="Path to a specific test directory to run")
     group.add_argument("--test_func", type=str, help="Name of the test directory to run from the JSON file")
-    parser.add_argument("--debug", action="store_true", help="Enable debug mode")
+    parser.add_argument("--debug", action="store_true", help="Enable debug mode",default=False)
     parser.add_argument("--use_underlay", action="store_true", help="Use underlay",default=False)
     
     args = parser.parse_args()
     if args.debug:
         setup_logger(True)
     
-    setup_path=os.path.join(os.environ.get("PYTHONPATH"),'setup_config.json')
+    # setup_path=os.path.join(os.environ.get("PYTHONPATH"),'setup_config.json')
     host_path=os.path.join(os.environ.get("PYTHONPATH"),'config.json')
-    setup_config = load_config(setup_path)
+    # setup_config = load_config(setup_path)
     host_data=load_config(host_path)
     host_config = load_config(host_path)['cluster_host_config']
-    INFO(setup_config)
-    setup=SETUP(setup_config["ips"]['pc_ip'],setup_config["ips"]['pe_ip'])
+    # INFO(setup_config)
+    setup=SETUP(host_config["ips"]['pc_ip'],host_config["ips"]['pe_ip'])
     # parse_config_and_prep(setup,host_data,args.use_underlay)
-    smart_nic_setup(setup)
+    smart_nic_setup(setup,args.use_underlay)
     tests_folder = 'tests'
 
+    if args.run_sanity:
+        sanity_dir="tests/sanity_tests"
+        run_tests_in_directory(sanity_dir, setup,host_config,args.use_underlay)
     if args.run_all:
-        run_tests_in_directory(tests_folder, setup,host_config)
+        run_tests_in_directory(tests_folder, setup,host_config,args.use_underlay)
     elif args.test_dir:
         test_directory = os.path.join(tests_folder, args.test_dir)
         if os.path.isdir(test_directory):
-            run_tests_in_directory(test_directory, setup,host_config)
+            run_tests_in_directory(test_directory, setup,host_config,args.use_underlay)
         else:
             INFO(f"Test directory {test_directory} does not exist.")
     elif args.test_func:
         INFO(f"Running test case {args.test_func}")
-        run_specific_test_case( args.test_func, setup,host_config)
+        run_specific_test_case( args.test_func, setup,host_config,args.use_underlay)
     INFO("Test Results:")
     for test_name, result in test_results.items():
         RESULT(f"{test_name}: {result}")

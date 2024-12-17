@@ -312,9 +312,18 @@ class NetworkingV4SDKEntity:
       raise ExpError(message=resp.error_messages[0].message)
     self._name = kwargs.get("name")
     # INFO(self.get_by_name(self._name))
+    if self._create_func:
+      fn = self._create_func
+    else:
+      fn = getattr(self._api_client, "get_{0}_by_id".format(self.ENTITY_NAME))
+    INFO(fn)
     self._data = self.get_by_name(self._name)
     INFO(self._data)
     self._entity_id = self._data.entity_id
+    response = fn(self._entity_id)
+    self._data=response.data.to_dict()
+    # INFO(response.get())
+    
     
     INFO(self._entity_id)
     self._created_new = True

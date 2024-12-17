@@ -93,6 +93,7 @@ def find_pf_vfs_from_sbdf(args):
     return (pf, vfs)
 
 def print_function_info(header, pf):
+  #  print(pf)
    print(f"""
 {header}:
    Id: {pf['Id']}
@@ -106,7 +107,7 @@ def print_function_info(header, pf):
        #print(pf['Oem']['NTNX'])
        if pf['Oem']['NTNX'].get('Network', None):
         print(f"   Network Id: {pf['Oem']['NTNX']['Network'].get('Id',None)}")  
-       if pf['Oem']['NTNX']['Partitioning'] == None:
+       if pf['Oem']['NTNX'].get("Partitioning", None) is None:
          print("\t Partitioning Schema not found")
          return
        if pf['Oem']['NTNX']['Partitioning']['Pf'].get('ActiveSchema',None):
