@@ -45,7 +45,7 @@ class TestNicProfile(BaseTest):
         INFO("CREATED SRIOV NIC PROFILE AND ATTACHED A NIC TO NIC PROFILE")
         # Add test code here
         vm_obj=objs['sriov_vm0']
-        nic_profile_obj=objs['sriov_nic_profile_test']
+        nic_profile_obj=objs['sriov_nic_profile']
         vm_nic_data=vm_obj.get_vm_data()['nics']
         nic_attached=False
         for nic in vm_nic_data:
@@ -60,7 +60,7 @@ class TestNicProfile(BaseTest):
         else:
             INFO("Nic Profile attached to VM")
             # INFO(obj.get_vm_data())
-        # ent_mng.test_teardown()
+        ent_mng.test_teardown()
     def test_attach_dp_offload_nic_profile(self):
         ent_mng = self.setup_obj.get_entity_manager()
         objs=ent_mng.create_test_entities(self.test_args['topology'])
