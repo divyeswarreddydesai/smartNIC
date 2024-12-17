@@ -5,7 +5,8 @@
 
 ### Configuration File
 The configuration file (`config.json`) is used to set up various parameters required for the tool. Below are the details of the configuration fields:
-
+###important
+please provide the ips and vlan config
 #### Cluster Host Configuration
 1. **ips**: Provide the IP addresses.
 2. **pc_ip**: The IP address of the PC.
