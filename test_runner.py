@@ -546,7 +546,7 @@ if __name__ == "__main__":
     host_config = load_config(host_path)['cluster_host_config']
     # INFO(setup_config)
     setup=SETUP(host_config["ips"]['pc_ip'],host_config["ips"]['pe_ip'])
-    # parse_config_and_prep(setup,host_data,args.use_underlay)
+    parse_config_and_prep(setup,host_data,args.use_underlay)
     smart_nic_setup(setup,args.use_underlay)
     tests_folder = 'tests'
 
