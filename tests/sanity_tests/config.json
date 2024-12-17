@@ -31,7 +31,7 @@
       {
         "kind": "nic_profile",
         "params": {
-          "name": "sriov_nic_profile_test",
+          "name": "sriov_nic_profile",
           "description": "NIC Profile with SRIOV",
           "capabilityType": "SRIOV",
           "numVFs": 10,
@@ -41,7 +41,7 @@
       {
         "kind": "nic_profile_association",
         "params": {
-          "nic_profile": "sriov_nic_profile_test",
+          "nic_profile": "sriov_nic_profile",
           "host_ip": "",
           "port_name": ""
         }
@@ -55,7 +55,7 @@
           "image_version": "1.0",
           "wait_for_ip": false,
           "bind": true,
-          "nic_profiles": ["sriov_nic_profile_test"]
+          "nic_profiles": ["sriov_nic_profile"]
         }
       }
     ]
@@ -67,7 +67,7 @@
         "params": {
           "name": "dp_offload_nic_profile",
           "description": "NIC Profile with DP_OFFLOAD",
-          "capabilityType": "DP_OFFLOAD",
+          "capabilityType": "DPOFFLOAD",
           "numVFs": 10,
           "nic_family": "someNicFamily"
         }
@@ -96,7 +96,24 @@
   },
   "test_ew_traffic_with_dp_offload": {
     "topology": [
-      
+      {
+        "kind": "nic_profile",
+        "params": {
+          "name": "dp_offload_nic_profile",
+          "description": "NIC Profile with DP_OFFLOAD",
+          "capabilityType": "DPOFFLOAD",
+          "numVFs": 10,
+          "nic_family": "someNicFamily"
+        }
+      },
+      {
+        "kind": "nic_profile_association",
+        "params": {
+          "nic_profile": "dp_offload_nic_profile",
+          "host_ip": "",
+          "port_name": ""
+        }
+      },
       {
         "kind": "vpc",
         "params": {
@@ -341,7 +358,7 @@
         "params": {
           "name": "dp_offload_nic_profile",
           "description": "NIC Profile with DP_OFFLOAD",
-          "capabilityType": "DP_OFFLOAD",
+          "capabilityType": "DPOFFLOAD",
           "numVFs": 10,
           "nic_family": "someNicFamily"
         }
@@ -447,7 +464,7 @@
         "params": {
           "name": "dp_offload_nic_profile",
           "description": "NIC Profile with DP_OFFLOAD",
-          "capabilityType": "DP_OFFLOAD",
+          "capabilityType": "DPOFFLOAD",
           "numVFs": 10,
           "nic_family": "someNicFamily"
         }
@@ -553,7 +570,7 @@
         "params": {
           "name": "dp_offload_nic_profile",
           "description": "NIC Profile with DP_OFFLOAD",
-          "capabilityType": "DP_OFFLOAD",
+          "capabilityType": "DPOFFLOAD",
           "numVFs": 10,
           "nic_family": "someNicFamily"
         }
@@ -639,7 +656,7 @@
         "params":{
           "name":"dp_offload_nic_profile_test",
           "description":"NIC Profile with DP_OFFLOAD",
-          "capabilityType":"DP_OFFLOAD",
+          "capabilityType":"DPOFFLOAD",
           "numVFs":10,
           "nic_family":"someNicFamily"
         }
