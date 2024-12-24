@@ -241,14 +241,15 @@ class LinuxOperatingSystem(AbstractOperatingSystem):
         """
         try:
             if udp_protocol:
-                server_command = "iperf3 -s -D -u"
+                server_command = "iperf -s -D -p 8000 -u"
             else:
-                server_command = "iperf3 -s -D"
+                server_command = "iperf -s -D -p 8000"
             result = self.execute(server_command)
             INFO("iperf server started successfully.")
         except ExpError as e:
             ERROR(f"Failed to start iperf server: {e}")
             raise ExpError(f"Failed to start iperf server: {e}")
+  # @retry(retries=3, sleep_interval=5)
   def run_iperf_client(self, server_ip,udp_protocol, duration=10, parallel=1):
         """
         Run the iperf client on the remote VM.
@@ -259,12 +260,13 @@ class LinuxOperatingSystem(AbstractOperatingSystem):
         """
         try:
             if udp_protocol:
-                client_command = f"iperf3 -c {server_ip} -t {duration} -P {parallel} -u"
+                client_command = f"iperf -c {server_ip} -t {duration} -P {parallel} -i 1 -p 8000 -u"
             else:
-                client_command = f"iperf3 -c {server_ip} -t {duration} -P {parallel}"
+                client_command = f"iperf -c {server_ip} -t {duration} -P {parallel} -i 1 -p 8000"
             result = self.execute(client_command)
             INFO("iperf client ran successfully.")
-            INFO(result['stdout'])
+            # INFO(result['stdout'])
+            return result['stdout']
         except ExpError as e:
             ERROR(f"Failed to run iperf client: {e}")
             raise ExpError(f"Failed to run iperf client: {e}")

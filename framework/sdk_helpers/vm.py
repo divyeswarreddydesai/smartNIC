@@ -12,7 +12,7 @@ from ntnx_vmm_py_client.models.vmm.v4.ahv.config.Disk import Disk
 from ntnx_vmm_py_client.models.vmm.v4.ahv.config.DiskAddress import DiskAddress
 from ntnx_vmm_py_client.models.vmm.v4.ahv.config.Nic import Nic
 from ntnx_vmm_py_client.models.vmm.v4.ahv.config.NicNetworkInfo import NicNetworkInfo
-from ntnx_vmm_py_client import ImageReference,DataSource,EmulatedNic,EmulatedNicModel,NicType,SubnetReference
+from ntnx_vmm_py_client import ImageReference,DataSource,NicType,SubnetReference,VirtualEthernetNic,VirtualEthernetNicNetworkInfo,VirtualEthernetNicModel
 from ntnx_vmm_py_client import SriovNic,DpOffloadNic,SriovNicNetworkInfo,DpOffloadNicNetworkInfo,NicProfileReference
 from ntnx_vmm_py_client.models.vmm.v4.ahv.config.PowerState import PowerState
 from ntnx_vmm_py_client.models.vmm.v4.ahv.config.Vm import Vm
@@ -68,6 +68,9 @@ class VmV4SDK:
                 raise ExpError(message="Image not found")
         self.vm_spec["disks"]=disk_list
         subnets=self.vm_spec.get("subnets",[])
+        traff_sub=self.vm_spec.get("traffic_subnet")
+        if traff_sub in subnets:
+            subnets.remove(traff_sub)
         nic_list=[]
         for sub in subnets:
             nic=self.create_nic(sub)
@@ -105,13 +108,13 @@ class VmV4SDK:
     def create_nic(self,subnet_name):
         if subnet_name in self.name_obj_map:
             subnet_obj=self.name_obj_map[subnet_name]
-            nic=Nic(backing_info=EmulatedNic(model=self.vm_spec.get("nic_model",EmulatedNicModel.VIRTIO)),network_info=NicNetworkInfo(nic_type=self.vm_spec.get("nic_type",NicType.NORMAL_NIC),subnet=SubnetReference(subnet_obj._entity_id)))
+            nic=Nic(nic_backing_info=VirtualEthernetNic(model=self.vm_spec.get("nic_model",VirtualEthernetNicModel.VIRTIO)),nic_network_info=VirtualEthernetNicNetworkInfo(nic_type=self.vm_spec.get("nic_type",NicType.NORMAL_NIC),subnet=SubnetReference(subnet_obj._entity_id)))
             return nic
         else :
             subnet_list=self.subnet_list()
             for subnet_obj in subnet_list:
                 if subnet_obj._name == subnet_name:
-                    nic=Nic(backing_info=EmulatedNic(model=self.vm_spec.get("nic_model",EmulatedNicModel.VIRTIO)),network_info=NicNetworkInfo(nic_type=self.vm_spec.get("nic_type",NicType.NORMAL_NIC),subnet=SubnetReference(subnet_obj._entity_id)))
+                    nic=Nic(nic_backing_info=VirtualEthernetNic(model=self.vm_spec.get("nic_model",VirtualEthernetNicModel.VIRTIO)),nic_network_info=VirtualEthernetNicNetworkInfo(nic_type=self.vm_spec.get("nic_type",NicType.NORMAL_NIC),subnet=SubnetReference(subnet_obj._entity_id)))
                     return nic
             raise ExpError(message="Subnet not found")
     def create_nic_with_nic_profile(self,nic_profile_name):
@@ -131,6 +134,9 @@ class VmV4SDK:
                     nic_data=nic_profile_obj.get_nic_profile_details()
                     break
         INFO(nic_data)
+        if not nic_data:
+            ERROR("Nic Profile not found")
+            raise ExpError(message="Nic Profile not found")
         subnet_name=self.vm_spec.get("traffic_subnet")
         capability_spec=nic_data.get("capability_config")
         
@@ -317,6 +323,7 @@ class VmV4SDK:
         # INFO(response)
         e_tag=ApiClient.get_etag(response)
         nic_data=self.create_nic_with_nic_profile(nic_profile_name)
+        INFO(nic_data)
         response=self.vm_api.create_nic(self._entity_id,nic_data,if_match=e_tag)
         task_id = response.to_dict()["data"]["ext_id"]
         v4_task_obj = V4TaskUtil(self._cluster)
@@ -341,6 +348,7 @@ class VmV4SDK:
             entity = self.get_by_name(self.vm_spec.get("name"))
             if entity:
                 entity._created_new = False
+                entity.power_on()  
                 INFO("Entity already exists")
                 return entity
         vm = self.create_payload()

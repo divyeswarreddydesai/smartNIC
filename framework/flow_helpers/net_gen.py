@@ -1,24 +1,86 @@
 from framework.vm_helpers.linux_os import LinuxOperatingSystem
 from framework.interfaces.consts import *
-from framework.logging.log import INFO
+from framework.logging.log import INFO,WARN,ERROR
 import os
 import time
 import re
 
 def gen_flows(ip1,ip2):
-    vm_obj_1=LinuxOperatingSystem(ip1,username=CENTOS_USER,password=CENTOS_PASSWORD)
-    # vm_obj_2=LinuxOperatingSystem(ip2,username=CENTOS_USER,password=CENTOS_PASSWORD)
+    vm_obj_1=LinuxOperatingSystem(ip1,username=RHEL_USER,password=RHEL_PASSWORD)
+    # vm_obj_2=LinuxOperatingSystem(ip2,username=RHEL_USER,password=RHEL_PASSWORD)
     vm_obj_1.ping_an_ip(ip2)
     # vm_obj_2.ping_an_ip(ip1)
 def start_continous_ping(ip1,ip2):
-    vm_obj_1=LinuxOperatingSystem(ip1,username=CENTOS_USER,password=CENTOS_PASSWORD)
+    INFO(ip1)
+    INFO(ip2)
+    vm_obj_1=LinuxOperatingSystem(ip1,username=RHEL_USER,password=RHEL_PASSWORD)
     file_path = f"/tmp/{ip2}.txt"
     vm_obj_1.execute(f'rm {file_path}', ignore_errors=True)
     ping_cmd = 'stdbuf -o0 ping %s 2>&1 > %s' % (ip2, file_path)
     INFO(ping_cmd)
-    ping_response = vm_obj_1.execute(ping_cmd, timeout=300, background=True)
+    ping_response = vm_obj_1.execute(ping_cmd, timeout=300, async_=True)
+    INFO(ping_response)
     assert ping_response["status"] == 0, "VM %s in overlay net " \
                                         "ping not successful" % ip2
+def parse_ifconfig_output(output):
+    interfaces = {}
+    current_interface = None
+
+    for line in output.splitlines():
+        # Match the interface name
+        match = re.match(r'^(\S+):\s+flags=', line)
+        if match:
+            current_interface = match.group(1)
+            interfaces[current_interface] = {}
+            continue
+
+        if current_interface:
+            # Match the inet (IPv4) address
+            match = re.search(r'inet\s+(\d+\.\d+\.\d+\.\d+)', line)
+            if match:
+                interfaces[current_interface]['inet'] = match.group(1)
+
+            # Match the inet6 (IPv6) address
+            match = re.search(r'inet6\s+([a-f0-9:]+)', line)
+            if match:
+                interfaces[current_interface]['inet6'] = match.group(1)
+
+            # Match the netmask
+            match = re.search(r'netmask\s+(\S+)', line)
+            if match:
+                interfaces[current_interface]['netmask'] = match.group(1)
+
+            # Match the broadcast address
+            match = re.search(r'broadcast\s+(\d+\.\d+\.\d+\.\d+)', line)
+            if match:
+                interfaces[current_interface]['broadcast'] = match.group(1)
+
+            # Match the MAC address
+            match = re.search(r'ether\s+(\S+)', line)
+            if match:
+                interfaces[current_interface]['ether'] = match.group(1)
+
+            # Match the RX packets
+            match = re.search(r'RX packets (\d+)', line)
+            if match:
+                interfaces[current_interface]['rx_packets'] = int(match.group(1))
+
+            # Match the TX packets
+            match = re.search(r'TX packets (\d+)', line)
+            if match:
+                interfaces[current_interface]['tx_packets'] = int(match.group(1))
+
+            # Match the RX bytes
+            match = re.search(r'RX bytes (\d+)', line)
+            if match:
+                interfaces[current_interface]['rx_bytes'] = int(match.group(1))
+
+            # Match the TX bytes
+            match = re.search(r'TX bytes (\d+)', line)
+            if match:
+                interfaces[current_interface]['tx_bytes'] = int(match.group(1))
+
+    return interfaces
 def parse_ping_output(ping_file_path):
     """
     Parse the ping output to calculate downtime, packet loss percentage, and average RTT.
@@ -58,7 +120,7 @@ def parse_ping_output(ping_file_path):
         'average_rtt': average_rtt
     }
 def stop_continous_ping(ip1,ip2):
-    vm_obj_1=LinuxOperatingSystem(ip1,username=CENTOS_USER,password=CENTOS_PASSWORD)
+    vm_obj_1=LinuxOperatingSystem(ip1,username=RHEL_USER,password=RHEL_PASSWORD)
     INFO("Executing kill process command")
     cmd_name="ping"
     ping_grep_cmd = ('ps auxxx | grep "%s" | grep -v grep | awk \'{print$2}\''
@@ -68,32 +130,59 @@ def stop_continous_ping(ip1,ip2):
     ping_pids = [pid.strip() for pid in ping_pids if pid.strip()]
     remote_file_path=f"/tmp/{ip2}.txt"
     local_file_path = os.environ[
-                        "NUTEST_PATH"] + "/pings/" + ip2 + ".txt"
+                        "PYTHONPATH"] + "/pings/" + ip2 + ".txt"
     # local_file_path=f"/tmp/{self.obj.name}.txt"
     
     
     INFO("ping processes pids: {}".format(ping_pids))
     for ping_pid in ping_pids:
         kill_cmd = 'nohup kill -s SIGINT %s' % (int(ping_pid))
-        vm_obj_1.execute(kill_cmd, timeout=120, background=False)
+        try:
+            vm_obj_1.execute(kill_cmd, timeout=120)
+        except Exception as e:
+            WARN(f"Failed to kill ping process with PID {ping_pid}: {e}")
     vm_obj_1.transfer_from(remote_file_path, local_file_path)
     ping_stats=parse_ping_output(local_file_path)
     return ping_stats
     
 
 def iperf_test(acc_ip1,acc_ip2,ip1,ip2,udp=False):   
-    vm_obj_1 = LinuxOperatingSystem(acc_ip1, username=CENTOS_USER, password=CENTOS_PASSWORD)
-    vm_obj_2 = LinuxOperatingSystem(acc_ip2, username=CENTOS_USER, password=CENTOS_PASSWORD)
-    
+    vm_obj_1 = LinuxOperatingSystem(acc_ip1, username=RHEL_USER, password=RHEL_PASSWORD)
+    vm_obj_2 = LinuxOperatingSystem(acc_ip2, username=RHEL_USER, password=RHEL_PASSWORD)
+    # vm_obj_1.execute("dnf install -y iperf3",run_as_root=True)
+    # vm_obj_2.execute("dnf install -y iperf3",run_as_root=True)
     # Start iperf server on vm_obj_2
+    # vm_obj_1.execute("setenforce 0")
+    # vm_obj_2.execute("setenforce 0")
     vm_obj_2.start_iperf_server(udp)
     
     # Run iperf client on vm_obj_1
     result = vm_obj_1.run_iperf_client(ip2,udp)
     
+    # stop_iperf_server(vm_obj_2)
     # Display the results
     print(f"iperf test results from {ip1} to {ip2}:\n{result}")
     return result
+def stop_iperf_server(vm_obj):
+    pid_command = "pgrep -f 'iperf -s'"
+    pid_result = vm_obj.execute(pid_command)
+    iperf_pids = []
+    if pid_result['status'] == 0:
+        iperf_pids = pid_result['stdout'].strip().split('\n')
+        iperf_pids = [pid.strip() for pid in iperf_pids if pid.strip()]
+        INFO(f"iperf server PIDs: {iperf_pids}")
+
+    else:
+        ERROR("Failed to get iperf server PIDs.")
+        
+    for pid in iperf_pids:
+        kill_command = f"kill -9 {pid}"
+        result = vm_obj.execute(kill_command)
+        if result['status'] == 0:
+            INFO(f"iperf server with PID {pid} stopped successfully.")
+        else:
+            ERROR(f"Failed to stop iperf server with PID {pid}: {result['stderr']}")
+
 def parse_iperf_output(iperf_output):
     """
     Parse the iperf output to calculate downtime, maximum throughput, and average throughput.
@@ -103,15 +192,12 @@ def parse_iperf_output(iperf_output):
     Returns:
     dict: A dictionary containing downtime, maximum throughput, and average throughput.
     """
-    downtime = 0.0
     total_throughput = 0.0
     max_throughput = 0.0
-    intervals = re.findall(r'\[.*?\]\s+(\d+\.\d+)-(\d+\.\d+)\s+sec\s+(\d+\.\d+)\s+\w+\s+(\d+\.\d+)\s+\w+/sec\s+(\d+)%', iperf_output)
+    intervals = re.findall(r'\[.*?\]\s+(\d+\.\d+)-(\d+\.\d+)\s+sec\s+(\d+\.\d+)\s+\w+\s+(\d+\.\d+)\s+\w+/sec', iperf_output)
     
     for interval in intervals:
-        start, end, transferred, throughput, loss = float(interval[0]), float(interval[1]), float(interval[2]), float(interval[3]), int(interval[4])
-        if loss > 0:
-            downtime += (end - start) * (loss / 100.0)
+        start, end, transferred, throughput = float(interval[0]), float(interval[1]), float(interval[2]), float(interval[3])
         total_throughput += throughput
         if throughput > max_throughput:
             max_throughput = throughput
@@ -119,7 +205,6 @@ def parse_iperf_output(iperf_output):
     average_throughput = total_throughput / len(intervals) if intervals else 0.0
     
     return {
-        'downtime': downtime,
         'max_throughput': max_throughput,
         'average_throughput': average_throughput
     }

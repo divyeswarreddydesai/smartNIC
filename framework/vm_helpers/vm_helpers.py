@@ -39,12 +39,12 @@ class PCVM(LinuxOperatingSystem):
         self.AHV_nic_port_map={}
         self.cluster_uuid=self.get_cluster_uuid()
         self.host_ip_node_uuid=self.get_uuids()
-        INFO(self.host_ip_node_uuid)
-        INFO(self.cluster_uuid)
+        DEBUG(self.host_ip_node_uuid)
+        DEBUG(self.cluster_uuid)
     def get_cluster_uuid(self):
         result=self.execute('ncli multicluster get-cluster-state')    
         res_dict=self.parse_stdout_to_dict(result["stdout"])
-        INFO(res_dict)
+        DEBUG(res_dict)
         # cluster_count=int(res_dict[0]['Registered Cluster Count'])
         # INFO(self.cvm_ip)
         # for i in range(cluster_count):
@@ -78,19 +78,19 @@ class CVM(LinuxOperatingSystem):
     def _get_host_ips(self):
         result=self.execute('hostips')
         # result=self.parse_stdout_to_dict(result["stdout"])
-        INFO(result)
+        DEBUG(result)
         # raise Exception("Not implemented")
         return result["stdout"].strip().split()
     def _get_cvm_ips(self):
         result=self.execute('svmips')
         # result=self.parse_stdout_to_dict(result["stdout"])
-        INFO(result)
+        DEBUG(result)
         # raise Exception("Not implemented")
         return result["stdout"].strip().split()
     def _get_ipmi_ips(self):
         result=self.execute('ipmiips')
         # result=self.parse_stdout_to_dict(result["stdout"])
-        INFO(result)
+        DEBUG(result)
         impis=result["stdout"].strip().split()
         impi_dict={ahv_ip:ipmi_ip for ahv_ip,ipmi_ip in zip(self.AHV_ip_list,impis)}
         # raise Exception("Not implemented")

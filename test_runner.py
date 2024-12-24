@@ -223,8 +223,8 @@ def run_tests_in_directory(directory, ssh_client,host_config,skip_driver):
                         guest_driver_data = host_config.get("guest_vm_driver")
                         validate_pool_list_ranges(lan_data)
                         configurations = [
-                            {"name": "ext_sub", "is_advanced_networking": True, "is_external": True},
-                            {"name": "bas_sub", "is_advanced_networking": False, "is_external": False}
+                            {"name": "ext_sub", "is_advanced_networking": True, "is_external": True,"bind":True},
+                            {"name": "bas_sub", "is_advanced_networking": False, "is_external": False,"bind":True}
                             
                         ]
 
@@ -371,8 +371,8 @@ def run_specific_test_case(test_path, ssh_client,host_config,skip_driver):
     guest_driver_data = host_config.get("guest_vm_driver")
     validate_pool_list_ranges(lan_data)
     configurations = [
-        {"name": "ext_sub", "is_advanced_networking": True, "is_external": True},
-    {"name": "bas_sub", "is_advanced_networking": False, "is_external": False}
+        {"name": "ext_sub", "is_advanced_networking": True, "is_external": True,"bind":True},
+    {"name": "bas_sub", "is_advanced_networking": False, "is_external": False,"bind":True}
     
     ]
 
@@ -454,7 +454,7 @@ def run_specific_test_case(test_path, ssh_client,host_config,skip_driver):
         except (Exception,ExpError)  as e:
             ERROR(f"Error running {function_name} in {cls.__name__}: {e}")
             try:
-                instance.setup_obj.get_entity_manager().test_teardown()
+                # instance.setup_obj.get_entity_manager().test_teardown()
                 INFO("teardown on fail")
             except Exception as e:
                 ERROR(f"Failed to teardown entities: {e}")
@@ -480,44 +480,53 @@ def parse_config_and_prep(setup,host_data,skip_driver):
     if vm_image_details.get('use_vm_default',False):
         vm_image_details=def_config['vm_image']
     INFO(vm_image_details) 
-    if re.match(r'^http[s]?://', vm_image_details['vm_image_location']):       
-        INFO(vm_image_details)
-        vm_args={
-            
-                "name": vm_image_details['vm_image_name'],
-                "bind": vm_image_details.get('bind',False),
-                "source_uri": vm_image_details['vm_image_location'],
-            
-        }
-    
+    image_obj=ImageV4SDK(setup.pcvm,**vm_image_details)
+    img_ent=image_obj.get_by_name(vm_image_details['vm_image_name'])
+    # image_create=vm_image_details.get('bin
+    if vm_image_details.get('bind',False) and img_ent:
+        pass
     else:
-        if vm_image_details.get('use_vm_default',True):
-            image_path=os.path.join(os.environ.get('PYTHONPATH'),vm_image_details['vm_image_location'])
-        else:
-            image_path=vm_image_details['vm_image_location']
-        if not os.path.isfile(image_path):
-            raise ExpError(f"File {image_path} does not exist.")
-        setup.pcvm.transfer_to(image_path, "/home/nutanix")
-        new_ssh=LinuxOperatingSystem(setup.pcvm.ip,username=PCVM_USER, password=PCVM_PASSWORD)
-        new_ssh.execute("cd /home/nutanix")
-        new_ssh.execute("yes | modify_firewall - open -i eth0 -p 8000 -a")
-        new_ssh.execute("timeout 600 python3 -m http.server 8000",async_=True)
-        vm_args={
-            
-                "name": vm_image_details['vm_image_name'],
-                "bind": vm_image_details.get('bind',False),
-                "source_uri": f'http://{setup.pcvm.ip}:8000/vm_image.qcow2'
-            
-        }
-        # setup.pcvm.execute(f"nuclei image.create name={vm_image_details['vm_image_name']} source_uri=http://{setup.pcvm.ip}:8000/vm_image.qcow2 image_type=DISK_IMAGE")
-    
-    image_obj=ImageV4SDK(setup.pcvm,**vm_args)
-    if not vm_image_details.get('bind',False):
-        img_ent=image_obj.get_by_name(vm_image_details['vm_image_name'])
         if img_ent:
             img_ent.remove()
-    image_obj.create()
-    new_ssh.execute("fuser -k 8000/tcp")
+        
+        if re.match(r'^http[s]?://', vm_image_details['vm_image_location']):       
+            INFO(vm_image_details)
+            vm_args={
+                
+                    "name": vm_image_details['vm_image_name'],
+                    "bind": vm_image_details.get('bind',False),
+                    "source_uri": vm_image_details['vm_image_location'],
+                
+            }
+        
+        else:
+            if vm_image_details.get('use_vm_default',True):
+                image_path=os.path.join(os.environ.get('PYTHONPATH'),vm_image_details['vm_image_location'])
+            else:
+                image_path=vm_image_details['vm_image_location']
+            if not os.path.isfile(image_path):
+                raise ExpError(f"File {image_path} does not exist.")
+            setup.pcvm.transfer_to(image_path, "/home/nutanix")
+            new_ssh=LinuxOperatingSystem(setup.pcvm.ip,username=PCVM_USER, password=PCVM_PASSWORD)
+            new_ssh.execute("cd /home/nutanix")
+            new_ssh.execute("yes | modify_firewall - open -i eth0 -p 8000 -a")
+            new_ssh.execute("timeout 600 python3 -m http.server 8000",async_=True)
+            vm_args={
+                
+                    "name": vm_image_details['vm_image_name'],
+                    "bind": vm_image_details.get('bind',False),
+                    "source_uri": f'http://{setup.pcvm.ip}:8000/vm_image.qcow2'
+                
+            }
+            # setup.pcvm.execute(f"nuclei image.create name={vm_image_details['vm_image_name']} source_uri=http://{setup.pcvm.ip}:8000/vm_image.qcow2 image_type=DISK_IMAGE")
+        image_obj=ImageV4SDK(setup.pcvm,**vm_args)
+        image_obj.create()
+      
+    try:
+        new_ssh.execute("fuser -k 8000/tcp")
+    except Exception as e:
+        # Ignore the error and continue
+        pass
     if skip_driver:
         return
     

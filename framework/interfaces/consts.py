@@ -119,7 +119,8 @@ CENTOS_PASSWORD = "nutanix/4u"
 # WINDOWS Credentials
 WINDOWS_USER = "Administrator"
 WINDOWS_PASSWORD = "nutanix/4u"
-
+RHEL_USER="root"
+RHEL_PASSWORD="nutanix/4u"
 # CENTOS Credentials
 CENTOS_USER = "nutanix"
 CENTOS_PASSWORD = "nutanix/4u"

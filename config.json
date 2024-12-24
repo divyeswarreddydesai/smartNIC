@@ -1,7 +1,7 @@
 {
   "cluster_host_config": {
     "ips": {
-        "pc_ip": "10.19.117.76",
+        "pc_ip": "10.19.117.59",
         "pe_ip": "10.15.251.71"
     },
     "host_driver": {
@@ -35,7 +35,7 @@
       "ip": "10.19.117.0",
       "prefix_length": 24,
       "default_gateway_ip": "10.19.117.1",
-      "pool_list_ranges": ["10.19.117.217 10.19.117.224"]
+      "pool_list_ranges": ["10.19.117.126 10.19.117.133"]
     }
   },
 
@@ -50,7 +50,7 @@
       "commands": []
     },
     "vm_image": {
-      "bind": false,
+      "bind": true,
       "vm_image_location": "data/image/vm_image.qcow2",
       "vm_image_name": "vm_image"
     },

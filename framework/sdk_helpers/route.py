@@ -4,7 +4,7 @@ Routes v4 SDK
 Author: Arjun Dey (arjun.dey@nutanix.com)
 """
 from ntnx_networking_py_client import RoutesApi, Route, RouteType, VpnConnectionsApi, RouteTablesApi
-from ntnx_networking_py_client import IPv4Subnet, IPSubnet
+from ntnx_networking_py_client import IPv4Subnet, IPSubnet,ExternalSubnet
 from ntnx_networking_py_client import IPv4Address, IPAddress
 from ntnx_networking_py_client import Nexthop, NexthopType
 from framework.logging.log import INFO
@@ -22,20 +22,20 @@ class RoutesV4SDK(NetworkingV4SDKEntity):
 
   WAIT_TIME_TO_POLL_TASK = 5
   ENTITY_TYPE_FOR_TASK = "RouteTable"
-  ENTITY_NAME = "routes"
+  ENTITY_NAME = "route_for_route_table"
   ENTITY_API_CLIENT = RoutesApi
 
-  def __init__(self, cluster, route_table_id=None, vpc_id=None, **kwargs):
+  def __init__(self, cluster, route_table_id=None, vpc_reference=None, **kwargs):
     """
-    Initialize class. Either of route_table_id or vpc_id must be provided.
+    Initialize class. Either of route_table_id or vpc_reference must be provided.
 
     Args:
       cluster (PrismCentral): The PrismCentral cluster.
       route_table_id(str|None): uuid of the route table
-      vpc_id(str|None): uuid of the vpc
+      vpc_reference(str|None): uuid of the vpc
     """
-    assert route_table_id or vpc_id, ("either of vpc_id or route_table_id must"
-                                      " be provided")
+    
+    self.vpc_reference=vpc_reference
     self.route_table_api=RouteTablesApi(cluster.api_client)
     self.vpn_connection_api=VpnConnectionsApi(cluster.api_client)
     if route_table_id:
@@ -43,10 +43,10 @@ class RoutesV4SDK(NetworkingV4SDKEntity):
     else:
       route_table_list=self.route_table_api.list_route_tables().data
       for i in route_table_list:
-        if i.vpc_reference==vpc_id:
+        if i.vpc_reference==vpc_reference:
           self.route_table_id=i.ext_id
           break
-    
+    self.destination = kwargs.get("destination")
     super(RoutesV4SDK, self).__init__(cluster, **kwargs)
     self._create_func = (
       lambda body: self._api_client
@@ -63,14 +63,14 @@ class RoutesV4SDK(NetworkingV4SDKEntity):
 
   # pylint: disable=arguments-differ
   @classmethod
-  def list(cls, cluster, route_table_id=None, vpc_id=None, return_json=False,
+  def list(cls, cluster, route_table_id=None, vpc_reference=None, return_json=False,
            **kwargs):
     """
     Invoke /api/networking/v4.0.a1/config/<entity> LIST via SDK.
 
     Args:
       route_table_id(str): uuid of the route table
-      vpc_id(str): uuid of the vpc. Either of vpc_id or route_table_id must be
+      vpc_reference(str): uuid of the vpc. Either of vpc_reference or route_table_id must be
                    provided
       cluster(PrismCentralCluster): instance of PC cluster
       return_json(bool): attribute to indicate if return has to be in json fmt
@@ -78,7 +78,7 @@ class RoutesV4SDK(NetworkingV4SDKEntity):
     Returns:
       list[RoutesV4SDK|dict]: list of routes objects
     """
-    assert route_table_id or vpc_id , ("either of vpc_id or route_table_id must"
+    assert route_table_id or vpc_reference , ("either of vpc_reference or route_table_id must"
                                       " be provided")
     route_table_api=RouteTablesApi(cluster.api_client)
     if route_table_id:
@@ -86,7 +86,7 @@ class RoutesV4SDK(NetworkingV4SDKEntity):
     else:
       route_table_list=route_table_api.list_route_tables().data
       for i in route_table_list:
-        if i.vpc_reference==vpc_id:
+        if i.vpc_reference==vpc_reference:
           kwargs["routeTableExtId"]=i.ext_id
           break
 
@@ -143,6 +143,8 @@ class RoutesV4SDK(NetworkingV4SDKEntity):
     Returns:
       Route: route object
     """
+    assert self.route_table_id or self.vpc_reference, ("either of vpc_reference or route_table_id must"
+                                      " be provided")
     if not is_update:
       route = Route(self.route_table_id)
     else:
@@ -186,4 +188,5 @@ class RoutesV4SDK(NetworkingV4SDKEntity):
       raise NotImplementedError("nexthop type not implemented")
     route.nexthop = nexthop
     route.route_type = RouteType.STATIC
+    
     return route

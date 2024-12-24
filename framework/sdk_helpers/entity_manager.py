@@ -35,10 +35,10 @@ class EntityManager:
     # def complete_teardown(self):
     #     for lev,kind_list in REM_ORDER.items():
     #         for kind in kind_list:
-    #             for name,entity in self.name_id_map.items():
+    #             for name,entity in self.name_obj_map.items():
     #                 if entity.kind==kind:
     #                     entity.remove()
-    #                     self.name_id_map.pop
+    #                     self.name_obj_map.pop
                         
     # def clear_vm(self):
     #     vm_api=VmApi(self.pcvm.api_client)
@@ -175,7 +175,8 @@ class EntityManager:
             
             return entity_obj
     def route_create(self, **kwargs):
-        kwargs["vpc_id"] = self.get_obj(name=kwargs.pop("vpc"),kind="vpc").ext_id
+        INFO(self.get_obj(name=kwargs.get("vpc_reference"),kind="vpc"))
+        kwargs["vpc_reference"] = self.get_obj(name=kwargs.get("vpc_reference"),kind="vpc").ext_id
         ent_obj = RoutesV4SDK(self.pcvm, **kwargs)
         ent_obj=ent_obj.create(**kwargs)
         
@@ -304,7 +305,7 @@ class EntityManager:
         """
         ent_obj = NicProfileV4SDK(self.pcvm, **kwargs)
         ent_obj.associate()
-        # self.name_id_map[ent_obj._name]=ent_obj
+        # self.name_obj_map[ent_obj._name]=ent_obj
         return 
     def nic_profile_disassociation_create(self, **kwargs):
         """
@@ -316,7 +317,7 @@ class EntityManager:
         """
         ent_obj = NicProfileV4SDK(self.pcvm, **kwargs)
         ent_obj.disassociate()
-        # self.name_id_map[ent_obj._name]=ent_obj
+        # self.name_obj_map[ent_obj._name]=ent_obj
         return 
     def vm_create(self, **kwargs):
         """
@@ -585,7 +586,7 @@ class EntityManager:
                     if hasattr(entity, 'remove'):
                         entity.remove()
                     INFO(f"Removed entity: {name}")
-                    # self.name_id_map.pop(name)
+                    # self.name_obj_map.pop(name)
                     break  # Exit the retry loop if successful
                 except Exception as e:
                     if attempt < retries - 1:
@@ -602,7 +603,7 @@ class EntityManager:
                     if hasattr(entity, 'remove'):
                         entity.remove()
                     INFO(f"Removed entity: {name}")
-                    # self.name_id_map.pop(name)
+                    # self.name_obj_map.pop(name)
                     to_remove.append(name)
                     break  # Exit the retry loop if successful
                 except Exception as e:
@@ -634,7 +635,7 @@ class EntityManager:
                     if hasattr(entity, 'remove'):
                         entity.remove()
                     INFO(f"Removed entity: {name}")
-                    # self.name_id_map.pop(name)
+                    # self.name_obj_map.pop(name)
                     to_remove.append(name)
                     break  # Exit the retry loop if successful
                 except Exception as e:
@@ -655,7 +656,7 @@ class EntityManager:
     #     """
     #     try:
     #         with open(filename, 'wb') as f:
-    #             pickle.dump(self.name_id_map, f)
+    #             pickle.dump(self.name_obj_map, f)
     #         INFO(f"State saved to {filename}")
     #     except Exception as e:
     #         ERROR(f"Failed to save state: {e}")
@@ -666,7 +667,7 @@ class EntityManager:
     #     """
     #     try:
     #         with open(filename, 'rb') as f:
-    #             self.name_id_map = pickle.load(f)
+    #             self.name_obj_map = pickle.load(f)
     #         INFO(f"State loaded from {filename}")
     #     except Exception as e:
     #         ERROR(f"Failed to load state: {e}")    

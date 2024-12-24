@@ -19,7 +19,7 @@ from ntnx_networking_py_client import ApiClient
 from ntnx_networking_py_client import Configuration
 # from ntnx_prism_py_client import ApiClient as PrismApiClient
 from framework.lib.decorators import retry
-from framework.logging.log import DEBUG, INFO
+from framework.logging.log import DEBUG, INFO,WARN
 from framework.logging.error import ExpError
 # from framework.entities.rest.mixins import TaskHandlingMixin
 # from framework.entities.task.task import Task, TaskStatus
@@ -216,7 +216,7 @@ class NetworkingV4SDKEntity:
       fn = getattr(entity_api_client, "list_{0}s".format(cls.ENTITY_NAME))
     elif cls.ENTITY_NAME == 'layer2_stretch':
       fn = getattr(entity_api_client, "list_layer2_stretches")
-    elif cls.ENTITY_NAME == 'routes':
+    elif cls.ENTITY_NAME == 'route_for_route_table':
       fn = getattr(entity_api_client, "list_routes_by_route_table_id")
     elif cls.ENTITY_NAME == 'bgp_routes':
       fn = getattr(entity_api_client, "list_routes_by_bgp_session_id")
@@ -225,6 +225,7 @@ class NetworkingV4SDKEntity:
 
     response = fn(**kwargs)
     DEBUG(json.dumps(response.to_dict()))
+    # INFO(response.to_dict())
     if return_json:
       return [entity.to_dict() for entity in response.data or []]
 
@@ -281,12 +282,14 @@ class NetworkingV4SDKEntity:
     """
     # Create entity specific payload for POST
     if kwargs.get("bind"):
-      entity = self.get_by_name(kwargs.get("name"))
-      if entity:
-        entity._created_new = False
-        return entity
+      if self.ENTITY_NAME != 'route_for_route_table':
+        entity = self.get_by_name(kwargs.get("name"))
+        if entity:
+          # INFO(entity)
+          entity._created_new = False
+          return entity
     body = self._make_create_payload(**kwargs)
-    INFO(json.dumps(body.to_dict()))
+    INFO(body)
     # Call entity specific create method defined by the SDK
     if self._create_func:
       fn = self._create_func
@@ -298,6 +301,7 @@ class NetworkingV4SDKEntity:
     DEBUG(response)
 
     # Return TaskReference for async requests
+    
     if async_:
       return response.data
     # Fetch task information and wait for completion. Set entity_manager
@@ -309,17 +313,24 @@ class NetworkingV4SDKEntity:
     # task=v4_task_obj._get_task(self._api_client,task_id)
     resp = v4_task_obj.wait_for_task_completion(task_id)
     if resp.status == "FAILED":
+      if self.ENTITY_NAME == 'route_for_route_table':
+        if "Duplicate destinations found" in resp.error_messages[0].message:
+          WARN("Route already exists: %s" % resp.error_messages[0].message)
+          return
       raise ExpError(message=resp.error_messages[0].message)
     self._name = kwargs.get("name")
     # INFO(self.get_by_name(self._name))
+    if self.ENTITY_NAME == 'route_for_route_table':
+      return
     if self._create_func:
       fn = self._create_func
     else:
       fn = getattr(self._api_client, "get_{0}_by_id".format(self.ENTITY_NAME))
     INFO(fn)
+    
     self._data = self.get_by_name(self._name)
     INFO(self._data)
-    self._entity_id = self._data.entity_id
+    self._entity_id = self._data._entity_id
     response = fn(self._entity_id)
     self._data=response.data.to_dict()
     # INFO(response.get())

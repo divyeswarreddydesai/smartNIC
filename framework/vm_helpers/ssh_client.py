@@ -121,29 +121,29 @@ class SSHClient:
                 if log_command:
                     INFO(f"Executing command: {cmd}")
                 cmd1 = f"source /etc/profile; {cmd}"
-                INFO(cmd1)
+                DEBUG(cmd1)
                 stdin, stdout, stderr = self.client.exec_command(cmd1, timeout=timeout, get_pty=tty)
-
+                DEBUG(f"Command executed: {cmd}")
                 if async_:
-                    return {'stdin':stdin,'stdout': stdout, 'std_err':stderr}  # Return immediately for async execution
-
-                if background:
-                    return None, None  # Command is running in the background
-
+                    return {'stdin':stdin,'stdout': stdout, 'std_err':stderr, "status":0}  # Return immediately for async execution
+                # INFO("skipped async")
+                
+                # INFO("channel close")
                 stdout.channel.settimeout(session_timeout)
                 stderr.channel.settimeout(session_timeout)
+                # INFO("reading repsonse")
                 exit_status = stdout.channel.recv_exit_status()
                 stdout_data = stdout.read().decode()
                 stderr_data = stderr.read().decode()
                 stdout.channel.close()
-
+                # INFO("read response")
                 if log_response:
                     INFO(f"Command response: {stdout_data}")
                     INFO(f"Command error: {stderr_data}")
 
                 if close_ssh_connection:
                     self.close()
-
+                # INFO("returning")
                 return {
                 'status': exit_status,
                 'stdout': stdout_data,

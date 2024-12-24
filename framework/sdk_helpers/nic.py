@@ -10,7 +10,7 @@ from ntnx_networking_py_client import ApiClient
 
 from ntnx_clustermgmt_py_client import ClustersApi
 from ntnx_networking_py_client import NicProfileApi,NicProfile,CapabilityConfig,CapabilityType,HostNic
-from framework.logging.log import INFO,ERROR
+from framework.logging.log import INFO,ERROR,DEBUG
 class NicProfileV4SDK:
     ENTITY_NAME = "nic_profile"
     ENTITY_API_CLIENT = NicProfileApi
@@ -39,21 +39,21 @@ class NicProfileV4SDK:
         if not kwargs.get("nic_family"):
             kwargs['nic_family'] = "someNicFamily"
         if kwargs.get('nic_family')=="someNicFamily":
-            INFO("came to setup nic_family")
-            INFO(self._cluster.AHV_nic_port_map)
+            DEBUG("came to setup nic_family")
+            DEBUG(self._cluster.AHV_nic_port_map)
             for ip in self._cluster.AHV_nic_port_map:
                 if len(self._cluster.AHV_nic_port_map[ip].keys()):
                     for ports in self._cluster.AHV_nic_port_map[ip]:
-                        INFO(cap_type)
+                        DEBUG(cap_type)
                         if cap_type in self._cluster.AHV_nic_port_map[ip][ports]["supported_capabilities"]:
-                            INFO(self._cluster.AHV_nic_port_map[ip][ports]['nic_family'])
+                            DEBUG(self._cluster.AHV_nic_port_map[ip][ports]['nic_family'])
                             if self.check_host_nic_exist(comp_type=cap_type,nic_family=self._cluster.AHV_nic_port_map[ip][ports]['nic_family']):
-                                INFO("alloted nic family")
-                                INFO(self._cluster.AHV_nic_port_map[ip][ports]['nic_family'])
+                                DEBUG("alloted nic family")
+                                DEBUG(self._cluster.AHV_nic_port_map[ip][ports]['nic_family'])
                                 kwargs['nic_family']=self._cluster.AHV_nic_port_map[ip][ports]['nic_family']
                                 break
                             # kwargs['nic_family']=self._cluster.AHV_nic_port_map[ip][ports]['nic_family']
-        INFO(kwargs)
+        DEBUG(kwargs)
         if kwargs.get("nic_family")=="someNicFamily":
             raise ExpError("No nic family found")
         if cap_type=="SRIOV":
@@ -92,14 +92,14 @@ class NicProfileV4SDK:
     @classmethod
     def list(cls, cluster, return_json=False, **kwargs):
         entity_api_client = cls.ENTITY_API_CLIENT(cluster.api_client)
-        INFO(cls.ENTITY_NAME)
+        DEBUG(cls.ENTITY_NAME)
         fn = getattr(entity_api_client, "list_{0}s".format(cls.ENTITY_NAME))
-        INFO(fn)
+        DEBUG(fn)
         response = fn(**kwargs)
         # INFO(response.to_dict()['metadata'])
         total_results=response.to_dict()['metadata']['total_available_results']
         # time.sleep(1)
-        INFO(total_results)
+        DEBUG(total_results)
         pages=(total_results//100)+1
         entities = []
         for i in range(pages):
@@ -119,41 +119,42 @@ class NicProfileV4SDK:
                 uuid = entity['ext_id']
                 
                 entities.append(cls(cluster, name=name, created_new=False, entity_id=uuid))
-        INFO(len(entities))
+        DEBUG(len(entities))
         return entities
     def get_by_name(self, name):
-        INFO(self.list(self._cluster)[0]._name)
-        INFO(name)
+        # (self.list(self._cluster)[0]._name)
+        DEBUG(name)
         entities = [x for x in self.list(self._cluster) if x._name == name]
-        INFO(entities)
+        DEBUG(entities)
         if entities:
             return entities[0]
         return None
     def get_nic_profile_details(self):
         fn=getattr(self.nic_api,"get_nic_profile_by_id")
         response = fn(self._entity_id)
-        INFO(response)
+        DEBUG(response)
         response_data = response.to_dict()["data"]
         return response_data
     def get_host_nic_reference(self,nic_type):
         if nic_type is None:
             raise ExpError("nic_type is not provided")
-        INFO("came for host_nic_reference")
+        DEBUG("came for host_nic_reference")
         cluster_api=ClustersApi(self._cluster.clstr_api_client)
         fn=getattr(cluster_api,"list_host_nics")
         response = fn(**self.nic_spec)
         response_data = response.to_dict()["data"]
         # INFO(response_data)
         random.shuffle(response_data)
-        INFO(self.nic_spec)
+        DEBUG(self.nic_spec)
         host_ip=None if (self.nic_spec.get("host_ip")=="" or self.nic_spec.get('host_ip') is None) else self.nic_spec.get("host_ip")
         
         port_name=None if (self.nic_spec.get("port_name")=="" or self.nic_spec.get('port_name') is None) else self.nic_spec.get("port_name")
-        INFO(host_ip)
-        INFO(port_name)
+        DEBUG(host_ip)
+        DEBUG(port_name)
+        # INFO(self._cluster.AHV_nic_port_map)
+        # INFO(response_data)
         nic_ids=[]
         if host_ip and port_name:
-            INFO(1)
             if nic_type["capability_type"] in self._cluster.AHV_nic_port_map[host_ip][port_name]["supported_capabilities"]:
                 nic_family=self._cluster.AHV_nic_port_map[host_ip][port_name]['nic_family']
                 for entity in response_data or []:
@@ -162,7 +163,6 @@ class NicProfileV4SDK:
                         
                         nic_ids.append(entity['ext_id'])
         elif host_ip and not port_name:
-            INFO(2)
             if len(self._cluster.AHV_nic_port_map[host_ip].keys())==0:
                 raise ExpError("No smartNIC ports found for the host")
             for ports in self._cluster.AHV_nic_port_map[host_ip]:
@@ -173,7 +173,6 @@ class NicProfileV4SDK:
                             nic_ids.append(entity['ext_id'])
 
         elif not host_ip and port_name:
-            INFO(3)
             for ip in self._cluster.AHV_nic_port_map:
                 if port_name in self._cluster.AHV_nic_port_map[ip]:
                     if nic_type['capability_type'] in self._cluster.AHV_nic_port_map[ip][port_name]["supported_capabilities"]:
@@ -187,17 +186,25 @@ class NicProfileV4SDK:
                         INFO(f"Nic type {nic_type} not supported by port {port_name} in host {ip}")
         else:
             for ip in self._cluster.AHV_nic_port_map:
-                INFO(4)
                 if len(self._cluster.AHV_nic_port_map[ip].keys()):
-                    INFO("came here")
+                    DEBUG("came to select host NIC as no host_ip and port_name provided")
                     for ports in self._cluster.AHV_nic_port_map[ip]:
-                        INFO(nic_type['capability_type'])
+                        DEBUG(nic_type['capability_type'])
                         if nic_type['capability_type'] in self._cluster.AHV_nic_port_map[ip][ports]["supported_capabilities"]:
                             nic_family=self._cluster.AHV_nic_port_map[ip][ports]['nic_family']
                             for entity in response_data or []:
                                 # INFO(entity)
+                                # INFO(entity['name'])
+                                # INFO(entity["node_uuid"])
+                                # INFO(nic_family)
+                                # INFO(nic_type['nic_family'])
+                                # INFO(self._cluster.host_ip_node_uuid[ip])
+                                # INFO(nic_type.get("associate"))
+                                # INFO(entity['_unknown_fields'].get('nicProfileExtId'))
+                                # INFO(entity['nic_profile_id'])
+                                # INFO()
                                 if entity['name']==ports and entity["node_uuid"]==self._cluster.host_ip_node_uuid[ip] and nic_family==nic_type['nic_family'] and (nic_type.get("associate") ^ ((entity['nic_profile_id'] is not None)or (entity['_unknown_fields'].get('nicProfileExtId')is not None))):
-                                    INFO(entity)
+                                    DEBUG(entity)
                                     nic_ids.append(entity['ext_id'])
 
         if len(nic_ids)>0:
@@ -212,6 +219,9 @@ class NicProfileV4SDK:
             raise ExpError(message="Nic profile not found")
         nic_prof_details=nic_prof_obj.get_nic_profile_details()
         INFO(nic_prof_details)
+        if self.nic_spec.get("skip_if_nic"):
+            if nic_prof_details.get('host_nic_specs'):
+                return
         capability_type = nic_prof_details['capability_config']['capability_type']
         cleaned_capability_type = capability_type.replace('_', '')
         nic_details={
@@ -227,14 +237,14 @@ class NicProfileV4SDK:
             INFO(fn)
             nic_profile_id=nic_prof_obj._entity_id
             host_nic=HostNic(host_nic_ext_id=host_nic_ref)
-            INFO(host_nic.to_dict())
+            DEBUG(host_nic.to_dict())
             response = fn(nic_profile_id,host_nic)
             # e_tag=ApiClient.get_etag(response)
             # INFO(e_tag)
             # if async_:
             #     return response.data
             response_data=response.to_dict()
-            INFO(response_data)
+            DEBUG(response_data)
             task_id = response_data["data"]["ext_id"]
             v4_task_obj = V4TaskUtil(self._cluster)
             resp = v4_task_obj.wait_for_task_completion(task_id, timeout=1200)
@@ -259,8 +269,8 @@ class NicProfileV4SDK:
         nic_prof_details=nic_prof_obj.get_nic_profile_details()
         if nic_prof_details.get('host_nic_specs') is None:
                 return
-        INFO(nic_prof_details)
-        INFO(self.nic_spec)
+        DEBUG(nic_prof_details)
+        DEBUG(self.nic_spec)
         nic_prof_ids = [i['host_nic_ext_id'] for i in nic_prof_details['host_nic_specs']]
         capability_type = nic_prof_details['capability_config']['capability_type']
         cleaned_capability_type = capability_type.replace('_', '')
@@ -311,6 +321,13 @@ class NicProfileV4SDK:
             raise ExpError("No host nic found with the given details or faced an issue while disassociating the host nic")
         return
     def create(self,async_=False):
+        if self.nic_spec.get("bind"):
+            entity=self.get_by_name(self.nic_spec.get("name"))
+            if entity:
+                entity._created_new = False
+                INFO("Entity already exists")
+                return entity
+            
         nic_profile = self.create_payload(**self.nic_spec)
         # DEBUG(json.dumps(image.to_dict()))
         # Call entity specific create method defined by the SDK
@@ -327,7 +344,7 @@ class NicProfileV4SDK:
         # e_tag=ApiClient.get_etag(response)
         # INFO(e_tag)
         # response_data=json.loads(response.data.decode('utf-8'))
-        INFO(response)
+        DEBUG(response)
         task_id = response.to_dict()["data"]["ext_id"]
         v4_task_obj = V4TaskUtil(self._cluster)
         resp = v4_task_obj.wait_for_task_completion(task_id, timeout=1200)
@@ -354,7 +371,7 @@ class NicProfileV4SDK:
     def update(self,async_=False,**kwargs):
         response=self.nic_api.get_nic_profile_by_id(self._entity_id)
         nic_data=response.to_dict()["data"]
-        INFO(nic_data)
+        # INFO(nic_data)
         
         for key, value in kwargs.items():
             if key in nic_data:
@@ -377,9 +394,9 @@ class NicProfileV4SDK:
         if async_:
             return response.data
         # e_tag=ApiClient.get_etag(response)
-        INFO(e_tag)
+        # INFO(e_tag)
         # response_data=json.loads(response.data.decode('utf-8'))
-        INFO(response)
+        DEBUG(response)
         task_id = response.to_dict()["data"]["ext_id"]
         v4_task_obj = V4TaskUtil(self._cluster)
         resp = v4_task_obj.wait_for_task_completion(task_id, timeout=1200)
@@ -419,7 +436,7 @@ class NicProfileV4SDK:
         if async_:
             return response.data
         response_data=response.to_dict()
-        INFO(response_data)
+        DEBUG(response_data)
         task_id = response_data["data"]["ext_id"]
         v4_task_obj = V4TaskUtil(self._cluster)
         resp = v4_task_obj.wait_for_task_completion(task_id, timeout=1200)

@@ -3,7 +3,7 @@ from framework.logging.log import INFO,ERROR
 from framework.logging.error import ExpError
 import os
 from framework.flow_helpers.ovn_validator import OvnValidator
-from framework.flow_helpers.offload import check_offloaded,get_tap_interface
+from framework.flow_helpers.offload import check_offloaded
 from framework.flow_helpers.net_gen import *
 class TestNicProfile(BaseTest):
     

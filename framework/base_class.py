@@ -16,6 +16,6 @@ class BaseTest:
         ent_mngr.create_class_entities(self.class_args)
     def teardown(self):
         # super().teardown()
-        # self.setup_obj.entity_manager.tear_down()
+        self.setup_obj.entity_manager.tear_down()
         # Additional teardown for this specific test
         INFO("Additional teardown for TestDpOffload.")
