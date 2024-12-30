@@ -2,6 +2,7 @@
 import json
 import importlib
 import re
+import ast
 import argparse
 import logging
 import inspect
@@ -18,6 +19,18 @@ from packaging import version
 import ipaddress
 import os
 test_results={}
+def setup_method_logging(log_file):
+    """
+    Set up logging to a file for a specific test method.
+    """
+    method_logger = logging.getLogger(log_file)
+    method_logger.setLevel(logging.INFO)
+    handler = logging.FileHandler(log_file, mode='w')
+    formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(filename)s:%(lineno)d - %(message)s')
+    handler.setFormatter(formatter)
+    method_logger.addHandler(handler)
+    method_logger.propagate = True 
+    return method_logger
 def count_ips_in_range(ip_range):
         start_ip, end_ip = ip_range.split()
         start_ip = ipaddress.ip_address(start_ip)
@@ -183,6 +196,11 @@ def get_directory_path(directory_name, root_folder='tests'):
             return os.path.join(root, directory_name)
     return None
 def run_tests_in_directory(directory, ssh_client,host_config,skip_driver):
+    # if directory.startswith("tests/"):
+    #         relative_path = directory[len("tests/"):]
+    #         latest_logs_path = os.path.join("latest_test_dir_logs", relative_path)
+    #         if not os.path.exists(latest_logs_path):
+    #             os.makedirs(latest_logs_path)        
     for root, sub_dir, files in os.walk(directory):
         for sub in sub_dir:
             sub_directory=os.path.join(directory,sub)
@@ -259,7 +277,15 @@ def run_tests_in_directory(directory, ssh_client,host_config,skip_driver):
                             "test_args":{}
                         }
                         instance = cls(ssh_client,**kwargs)
-                        method_names = [method_name for method_name, method in inspect.getmembers(instance, predicate=inspect.ismethod) if method_name not in ['setup', 'teardown',"__init__"]]
+                        def get_method_names_in_order(cls):
+                            source = inspect.getsource(cls)
+                            tree = ast.parse(source)
+                            class_node = next(node for node in tree.body if isinstance(node, ast.ClassDef))
+                            method_names = [node.name for node in class_node.body if isinstance(node, ast.FunctionDef)]
+                            return method_names
+                        # method_names = [method_name for method_name, method in inspect.getmembers(instance, predicate=inspect.ismethod) if method_name not in ['setup', 'teardown',"__init__"]]
+                        method_names = get_method_names_in_order(cls)
+                        method_names = [method_name for method_name in method_names if method_name not in ['setup', 'teardown', "__init__"]]
                         INFO(method_names)
                         if hasattr(instance, 'setup'):
                             setup_method = getattr(instance, 'setup')
@@ -292,6 +318,8 @@ def run_tests_in_directory(directory, ssh_client,host_config,skip_driver):
                                     if not skip_driver:
                                         test_config.append(driver_data)
                                     test_args["topology"]=test_config
+                                    # method_log_file=os.path.join(latest_logs_path,f"{class_name}_{function_name}.log")
+                                    # method_logger = setup_method_logging(method_log_file)
                                     instance.test_args=test_args
                                     INFO("-"*50)
                                     INFO(f"Running {function_name} in {cls.__name__}")
@@ -302,8 +330,14 @@ def run_tests_in_directory(directory, ssh_client,host_config,skip_driver):
                                     INFO("-"*50)
                                     test_results[function_name] = 'pass'
                                 except (Exception,ExpError) as e:
+                                    # method_logger.error(f"Error running {function_name} in {module_name}: {e}")
                                     ERROR(f"Error running {function_name} in {cls.__name__}: {e}")
                                     test_results[function_name] = 'fail'
+                                # finally:
+                                #     # Remove the handler after each test to avoid duplicate logs
+                                #     for handler in method_logger.handlers[:]:
+                                #         handler.close()
+                                #         method_logger.removeHandler(handler)
                             else:
                                 INFO(f"Function {function_name} not found in class {cls.__name__}.")
                         # Run teardown method if it exists
@@ -558,10 +592,19 @@ if __name__ == "__main__":
     parse_config_and_prep(setup,host_data,args.use_underlay)
     smart_nic_setup(setup,args.use_underlay)
     tests_folder = 'tests'
+    log_dir = 'logs'
+    # latest_logs="latest_test_dir_logs"
+    if not os.path.exists(log_dir):
+        os.makedirs(log_dir)
+    # if not os.path.exists(latest_logs):
+    #     os.makedirs(latest_logs)
 
     if args.run_sanity:
-        sanity_dir="tests/sanity_tests"
-        run_tests_in_directory(sanity_dir, setup,host_config,args.use_underlay)
+        test_directory="tests/sanity_tests"
+        if os.path.isdir(test_directory):
+            run_tests_in_directory(test_directory, setup,host_config,args.use_underlay)
+        else:
+            INFO(f"Test directory {test_directory} does not exist.")
     if args.run_all:
         run_tests_in_directory(tests_folder, setup,host_config,args.use_underlay)
     elif args.test_dir:

@@ -10,9 +10,10 @@ class TestNicProfile(BaseTest):
     
     def test_sriov_nic_profile_CRUD(self):
         ent_mng = self.setup_obj.get_entity_manager()
-        objs=ent_mng.create_test_entities(self.test_args['topology'])
+        ent_mng.create_test_entities(self.test_args['topology'])
+        objs=ent_mng.name_obj_map
         INFO("CREATED SRIOV NIC PROFILE")
-        nic_profile_obj=objs['sriov_nic_profile']
+        nic_profile_obj=objs['sriov_nic_profile_crud']
         try:
             data={}
             data["description"]="sriov_nic_profile"+" updated"
@@ -26,9 +27,10 @@ class TestNicProfile(BaseTest):
     
     def test_dp_offload_nic_profile_CRUD(self):
         ent_mng = self.setup_obj.get_entity_manager()
-        objs=ent_mng.create_test_entities(self.test_args['topology'])
+        ent_mng.create_test_entities(self.test_args['topology'])
+        objs=ent_mng.name_obj_map
         INFO("CREATED DP OFFLOAD NIC PROFILE")
-        nic_profile_obj=objs['dp_offload_nic_profile']
+        nic_profile_obj=objs['dp_offload_nic_profile_crud']
         try:
             data={}
             data["description"]="dp_offload_nic_profile"+" updated"
@@ -42,7 +44,8 @@ class TestNicProfile(BaseTest):
         
     def test_attach_sriov_nic_profile(self):
         ent_mng = self.setup_obj.get_entity_manager()
-        objs=ent_mng.create_test_entities(self.test_args['topology'])
+        ent_mng.create_test_entities(self.test_args['topology'])
+        objs=ent_mng.name_obj_map
         INFO("CREATED SRIOV NIC PROFILE AND ATTACHED A NIC TO NIC PROFILE")
         
         vm_obj=objs['sriov_vm0']
@@ -68,12 +71,14 @@ class TestNicProfile(BaseTest):
             raise ExpError("Nic Profile not attached to VM") 
         else:
             INFO("Nic Profile attachment validated")
-        
+        vm_obj=objs['sriov_vm0']
+        vm_obj.remove()
             # INFO(obj.get_vm_data())
-        ent_mng.test_teardown()
+        # ent_mng.test_teardown()
     def test_attach_dp_offload_nic_profile(self):
         ent_mng = self.setup_obj.get_entity_manager()
-        objs=ent_mng.create_test_entities(self.test_args['topology'])
+        ent_mng.create_test_entities(self.test_args['topology'])
+        objs=ent_mng.name_obj_map
         vm_obj=objs['dp_vm0']
         nic_profile_obj=objs['dp_offload_nic_profile']
         vm_nic_data=vm_obj.get_vm_data()['nics']
@@ -94,13 +99,12 @@ class TestNicProfile(BaseTest):
             raise ExpError("Nic Profile not attached to VM")
         else:
             INFO("Nic Profile attachment validated")
-        ent_mng.test_teardown()
+        # ent_mng.test_teardown()
         
     def test_ew_traffic_with_dp_offload(self):
         ent_mng = self.setup_obj.get_entity_manager()
-        objs=ent_mng.create_test_entities(self.test_args['topology'])
-        # Add test code here
-        
+        ent_mng.create_test_entities(self.test_args['topology'])
+        objs=ent_mng.name_obj_map
         ovn_val=OvnValidator(self.setup_obj)
         flows_validated=ovn_val.validate_offload_flows("sub1.vm0","sub2.vm0")
         if not flows_validated:
@@ -115,7 +119,7 @@ class TestNicProfile(BaseTest):
         INFO(result)
         result = parse_iperf_output(iperf_test(vm1_acc_ip,vm2_acc_ip,vm1_ip,vm2_ip,udp=True))
         INFO(result)
-        ent_mng.test_teardown()
+        # ent_mng.test_teardown()
     def test_dp_offload_for_fip(self):
         ent_mng = self.setup_obj.get_entity_manager()
         objs=ent_mng.create_test_entities(self.test_args['topology'])
@@ -154,7 +158,8 @@ class TestNicProfile(BaseTest):
     #     ent_mng.test_teardown()
     def test_vm_ops_for_dp_offloaded_entities(self):
         ent_mng = self.setup_obj.get_entity_manager()
-        objs=ent_mng.create_test_entities(self.test_args['topology'])
+        ent_mng.create_test_entities(self.test_args['topology'])
+        objs=ent_mng.name_obj_map
         ovn_val=OvnValidator(self.setup_obj)
         vm1_acc_ip=ovn_val.get_ssh_ip_of_vm("sub1.vm0")
         vm2_acc_ip=ovn_val.get_ssh_ip_of_vm("sub2.vm0")
@@ -187,18 +192,21 @@ class TestNicProfile(BaseTest):
         vm1_obj.reboot()
         vm1_obj.power_cycle()
         start_continous_ping(vm1_acc_ip,vm2_acc_ip)
-        INFO("attaching sriov profile to vm")
         vm1_obj.power_off()
-        vm1_obj.attach_nic_profile_to_vm("sriov_nic_profile")
-        try:
-            vm1_obj.power_on()
-            raise ExpError("VM powered on with both sriov and dp_offload profiles attached")
-        except ExpError as e:
-            INFO(e)
-            INFO("VM not powered on with both sriov and dp_offload profiles attached")
+        INFO(objs)
         dp_offload_nic=objs['dp_offload_nic_profile']
         INFO("removing dp offload profile from vm")
         vm1_obj.detach_nic_profile_from_vm(dp_offload_nic._entity_id)
+        INFO("attaching sriov profile and sub1 to vm")
+        vm1_obj.attach_nic_to_vm("sub1","subnet")
+        vm1_obj.attach_nic_to_vm("sriov_nic_profile","nic_profile")
+        try:
+            vm1_obj.power_on()
+            raise ExpError("VM powered on with sriov attached after removing dp offload profile")
+        except ExpError as e:
+            INFO(e)
+            INFO("VM powered on with sriov attached after removing dp offload profile")
+        
         
         flows_validated=ovn_val.validate_offloaded_flows_on_ahv1("sub1.vm0","sub2.vm0")
         if flows_validated:
@@ -206,7 +214,13 @@ class TestNicProfile(BaseTest):
         else:
             INFO("Flows are not offloaded after detaching dp offload profile")
         INFO("attaching dp offload profile to vm")
-        vm1_obj.attach_nic_profile_to_vm("dp_offload_nic_profile")
+        try:
+            vm1_obj.attach_nic_to_vm("dp_offload_nic_profile")
+            vm1_obj.power_on()
+            raise ExpError("VM powered on with both sriov and dp offload attached which is not allowed")
+        except ExpError as e:
+            INFO(e)
+            INFO("Expected error occured")
         
         flows_validated=ovn_val.validate_offloaded_flows_on_ahv1("sub1.vm0","sub2.vm0")
         if not flows_validated:
@@ -216,10 +230,11 @@ class TestNicProfile(BaseTest):
         stop_continous_ping(vm1_acc_ip,vm2_acc_ip)
         stop_continous_ping(vm1_acc_ip,vm3_acc_ip)
         
-        ent_mng.test_teardown()
+        # ent_mng.test_teardown()
     def test_data_path_ovn_controller_is_down(self):
         ent_mng = self.setup_obj.get_entity_manager()
-        objs=ent_mng.create_test_entities(self.test_args['topology'])
+        ent_mng.create_test_entities(self.test_args['topology'])
+        objs=ent_mng.name_obj_map
         ovn_val=OvnValidator(self.setup_obj)
         vm1_acc_ip=ovn_val.get_ssh_ip_of_vm("sub1.vm0")
         vm2_acc_ip=ovn_val.get_ssh_ip_of_vm("sub2.vm0")
@@ -274,11 +289,12 @@ class TestNicProfile(BaseTest):
         res2=stop_continous_ping(vm1_acc_ip,vm3_acc_ip)
         INFO(res1)
         INFO(res2)
-        ent_mng.test_teardown()
+        # ent_mng.test_teardown()
     def test_dp_offload_with_process_restarts(self):
         ent_mng = self.setup_obj.get_entity_manager()
         INFO(self.test_args)
-        objs=ent_mng.create_test_entities(self.test_args['topology'])
+        ent_mng.create_test_entities(self.test_args['topology'])
+        objs=ent_mng.name_obj_map
         ovn_val=OvnValidator(self.setup_obj)
         vm1_acc_ip=ovn_val.get_ssh_ip_of_vm("sub1.vm0")
         vm2_acc_ip=ovn_val.get_ssh_ip_of_vm("sub2.vm0")

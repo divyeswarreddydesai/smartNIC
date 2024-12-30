@@ -153,14 +153,33 @@ class VmV4SDK:
             INFO("created_nic")
             return nic
         elif capability_spec['capability_type']=="DP_OFFLOAD":
+            
+                    
             if subnet_name in self.name_obj_map:
                 subnet_obj=self.name_obj_map[subnet_name]
+                if self._entity_id:
+                    response=self.vm_api.list_nics_by_vm_id(self._entity_id)
+                    for nic in response.data:
+                        if nic['nic_network_info'] and nic['nic_network_info']['subnet']['ext_id']==subnet_obj._entity_id and nic['nic_network_info']['_object_type']=="vmm.v4.ahv.config.VirtualEthernetNicNetworkInfo":
+                            INFO(nic)
+                            self.detach_nic_profile_from_vm(nic['ext_id'])
+                            INFO("Detached nic with normal subnet")
+                        
+                        
                 nic=Nic(nic_backing_info=DpOffloadNic(dp_offload_profile_reference=NicProfileReference(ext_id=nic_data['ext_id'])),nic_network_info=DpOffloadNicNetworkInfo(subnet=SubnetReference(subnet_obj._entity_id)))
                 return nic
             else :
                 subnet_list=self.subnet_list()
                 for subnet_obj in subnet_list:
                     if subnet_obj._name == subnet_name:
+                        if self._entity_id:
+                            response=self.vm_api.list_nics_by_vm_id(self._entity_id)
+                            for nic in response.data:
+                                if nic['nic_network_info'] and nic['nic_network_info']['subnet']['ext_id']==subnet_obj._entity_id and nic['nic_network_info']['_object_type']=="vmm.v4.ahv.config.VirtualEthernetNicNetworkInfo":
+                                    INFO(nic)
+                                    self.detach_nic_profile_from_vm(nic['ext_id'])
+                                    INFO("Detached nic with normal subnet")
+                        # self.detach_nic_profile_from_vm()
                         nic=Nic(nic_backing_info=DpOffloadNic(dp_offload_profile_reference=NicProfileReference(ext_id=nic_data['ext_id'])),nic_network_info=DpOffloadNicNetworkInfo(subnet=SubnetReference(subnet_obj._entity_id)))
                         return nic
                 ERROR("Subnet not found")
@@ -316,13 +335,16 @@ class VmV4SDK:
         if resp.status == "FAILED":
             raise ExpError(message=resp.error_messages[0].message)
         return self
-    def attach_nic_profile_to_vm(self,nic_profile_name):
+    def attach_nic_to_vm(self,nic_profile_name,type="nic_profile"):
         if not self._entity_id:
             raise ExpError(message="VM not found")
         response=self.vm_api.get_vm_by_id(self._entity_id)
         # INFO(response)
         e_tag=ApiClient.get_etag(response)
-        nic_data=self.create_nic_with_nic_profile(nic_profile_name)
+        if type=="subnet":
+            nic_data=self.create_nic(nic_profile_name)
+        else:
+            nic_data=self.create_nic_with_nic_profile(nic_profile_name)
         INFO(nic_data)
         response=self.vm_api.create_nic(self._entity_id,nic_data,if_match=e_tag)
         task_id = response.to_dict()["data"]["ext_id"]

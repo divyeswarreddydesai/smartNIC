@@ -10,7 +10,7 @@ from ntnx_networking_py_client import ApiClient
 
 from ntnx_clustermgmt_py_client import ClustersApi
 from ntnx_networking_py_client import NicProfileApi,NicProfile,CapabilityConfig,CapabilityType,HostNic
-from framework.logging.log import INFO,ERROR,DEBUG
+from framework.logging.log import INFO,ERROR,DEBUG,WARN
 class NicProfileV4SDK:
     ENTITY_NAME = "nic_profile"
     ENTITY_API_CLIENT = NicProfileApi
@@ -38,6 +38,7 @@ class NicProfileV4SDK:
             cap_type=cap_type.replace('_', '')
         if not kwargs.get("nic_family"):
             kwargs['nic_family'] = "someNicFamily"
+        nic_fam=None
         if kwargs.get('nic_family')=="someNicFamily":
             DEBUG("came to setup nic_family")
             DEBUG(self._cluster.AHV_nic_port_map)
@@ -47,6 +48,7 @@ class NicProfileV4SDK:
                         DEBUG(cap_type)
                         if cap_type in self._cluster.AHV_nic_port_map[ip][ports]["supported_capabilities"]:
                             DEBUG(self._cluster.AHV_nic_port_map[ip][ports]['nic_family'])
+                            nic_fam=self._cluster.AHV_nic_port_map[ip][ports]['nic_family']
                             if self.check_host_nic_exist(comp_type=cap_type,nic_family=self._cluster.AHV_nic_port_map[ip][ports]['nic_family']):
                                 DEBUG("alloted nic family")
                                 DEBUG(self._cluster.AHV_nic_port_map[ip][ports]['nic_family'])
@@ -55,7 +57,11 @@ class NicProfileV4SDK:
                             # kwargs['nic_family']=self._cluster.AHV_nic_port_map[ip][ports]['nic_family']
         DEBUG(kwargs)
         if kwargs.get("nic_family")=="someNicFamily":
-            raise ExpError("No nic family found")
+            WARN("No nic family found with free host NICs so alloting a random nic family")
+            if nic_fam:
+                kwargs['nic_family']=nic_fam
+            else:
+                raise ExpError("No nic family found")
         if cap_type=="SRIOV":
             cap_type=CapabilityType.SRIOV
         elif cap_type=="DPOFFLOAD":
@@ -219,7 +225,7 @@ class NicProfileV4SDK:
             raise ExpError(message="Nic profile not found")
         nic_prof_details=nic_prof_obj.get_nic_profile_details()
         INFO(nic_prof_details)
-        if self.nic_spec.get("skip_if_nic"):
+        if self.nic_spec.get("skip_if_nic",None):
             if nic_prof_details.get('host_nic_specs'):
                 return
         capability_type = nic_prof_details['capability_config']['capability_type']
