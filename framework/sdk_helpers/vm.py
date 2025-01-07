@@ -209,7 +209,7 @@ class VmV4SDK:
                 entities.append(SubnetV4SDK(self._cluster, name=name, created_new=False, entity_id=uuid))
         return entities
     def get_by_name(self, name):
-        INFO(self.list(self._cluster,self.name_obj_map)[0]._name)
+        # INFO(self.list(self._cluster,self.name_obj_map)[0]._name)
         entities = [x for x in self.list(self._cluster,self.name_obj_map) if x._name == name]
         # INFO(entities)
         if entities:
@@ -366,6 +366,7 @@ class VmV4SDK:
             raise ExpError(message=resp.error_messages[0].message)
         return self
     def create(self, async_=False):
+        INFO("creation")
         if self.vm_spec.get("bind"):
             entity = self.get_by_name(self.vm_spec.get("name"))
             if entity:
@@ -373,6 +374,7 @@ class VmV4SDK:
                 entity.power_on()  
                 INFO("Entity already exists")
                 return entity
+        INFO("creating new entity")
         vm = self.create_payload()
         # nic_list=self.nic_list(self._cluster)
         # INFO(nic_list)

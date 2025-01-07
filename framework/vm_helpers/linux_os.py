@@ -241,10 +241,30 @@ class LinuxOperatingSystem(AbstractOperatingSystem):
         """
         try:
             if udp_protocol:
-                server_command = "iperf -s -D -p 8000 -u"
+                server_command = "sudo iperf3 -s -D "
             else:
-                server_command = "iperf -s -D -p 8000"
-            result = self.execute(server_command)
+                server_command = "sudo iperf3 -s -D "
+            
+            for loop in range(1, 6):
+              result = self.execute(server_command,background=True)
+              time.sleep(3)
+              # self.execute("ifconfig")
+              response = self.execute("ps -ef | grep iperf3")['stdout']
+              if "iperf3 -s -D" in response:
+                break
+
+              if loop == 5:
+                ERROR("Unable start iperf server")
+                raise ExpError("Unable start iperf server")
+
+              INFO("Try(%s/5): Starting iperf3 server failed. Try again" % loop)
+            # if result['status'] == 0:
+                # INFO("iperf server started successfully.")
+                # INFO(f"iperf server output: {result['stdout']}")
+            # else:
+            #     ERROR(f"Failed to start iperf server: {result['stderr']}")
+            #     raise ExpError(f"Failed to start iperf server: {result['stderr']}")
+    
             INFO("iperf server started successfully.")
         except ExpError as e:
             ERROR(f"Failed to start iperf server: {e}")
@@ -260,9 +280,9 @@ class LinuxOperatingSystem(AbstractOperatingSystem):
         """
         try:
             if udp_protocol:
-                client_command = f"iperf -c {server_ip} -t {duration} -P {parallel} -i 1 -p 8000 -u"
+                client_command = f"sudo iperf3 -c {server_ip} -t {duration} -P {parallel} -i 1 -u"
             else:
-                client_command = f"iperf -c {server_ip} -t {duration} -P {parallel} -i 1 -p 8000"
+                client_command = f"sudo iperf3 -c {server_ip} -t {duration} -P {parallel} -i 1"
             result = self.execute(client_command)
             INFO("iperf client ran successfully.")
             # INFO(result['stdout'])

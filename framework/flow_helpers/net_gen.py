@@ -129,10 +129,14 @@ def stop_continous_ping(ip1,ip2):
     ping_pids = ps_output["stdout"].strip().split('\n')
     ping_pids = [pid.strip() for pid in ping_pids if pid.strip()]
     remote_file_path=f"/tmp/{ip2}.txt"
-    local_file_path = os.environ[
-                        "PYTHONPATH"] + "/pings/" + ip2 + ".txt"
-    # local_file_path=f"/tmp/{self.obj.name}.txt"
-    
+    local_dir_path = os.path.join(os.environ["PYTHONPATH"], "pings")
+    local_file_path = os.path.join(local_dir_path, f"{ip2}.txt")
+
+    # Check if the pings directory exists, if not, create it
+    if not os.path.exists(local_dir_path):
+        os.makedirs(local_dir_path)
+        INFO(f"Created directory: {local_dir_path}")
+
     
     INFO("ping processes pids: {}".format(ping_pids))
     for ping_pid in ping_pids:
@@ -154,17 +158,22 @@ def iperf_test(acc_ip1,acc_ip2,ip1,ip2,udp=False):
     # Start iperf server on vm_obj_2
     # vm_obj_1.execute("setenforce 0")
     # vm_obj_2.execute("setenforce 0")
+    vm_obj_1.execute("systemctl stop firewalld",run_as_root=True)
+    vm_obj_2.execute("systemctl stop firewalld",run_as_root=True)
+    try:
+        stop_iperf_server(vm_obj_2)
+    except Exception as e:
+        ERROR(f"Failed to stop iperf server: {e}")
     vm_obj_2.start_iperf_server(udp)
     
     # Run iperf client on vm_obj_1
     result = vm_obj_1.run_iperf_client(ip2,udp)
     
-    # stop_iperf_server(vm_obj_2)
     # Display the results
     print(f"iperf test results from {ip1} to {ip2}:\n{result}")
     return result
 def stop_iperf_server(vm_obj):
-    pid_command = "pgrep -f 'iperf -s'"
+    pid_command = "pgrep -f 'iperf3 -s'"
     pid_result = vm_obj.execute(pid_command)
     iperf_pids = []
     if pid_result['status'] == 0:

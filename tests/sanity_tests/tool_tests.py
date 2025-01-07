@@ -9,6 +9,20 @@ from framework.sdk_helpers.vm import VmV4SDK
 class TestNicProfile(BaseTest):
     
     def test_sriov_nic_profile_CRUD(self):
+        """
+        Test the CRUD operations for SR-IOV NIC Profile.
+
+        This test performs the following steps:
+        1. Create test entities based on the provided topology.
+        2. Retrieve the SR-IOV NIC Profile object from the created entities.
+        3. Update the description of the SR-IOV NIC Profile.
+        4. Log the success or failure of the update operation.
+        5. Teardown the test entities.
+        6. Log the deletion of the SR-IOV NIC Profile.
+
+        Raises:
+            ExpError: If the test fails.
+        """
         ent_mng = self.setup_obj.get_entity_manager()
         ent_mng.create_test_entities(self.test_args['topology'])
         objs=ent_mng.name_obj_map
@@ -26,6 +40,20 @@ class TestNicProfile(BaseTest):
         INFO("DELETED SRIOV NIC PROFILE")
     
     def test_dp_offload_nic_profile_CRUD(self):
+        """
+        Test the CRUD operations for DP Offload NIC Profile.
+
+        This test performs the following steps:
+        1. Create test entities based on the provided topology.
+        2. Retrieve the DP Offload NIC Profile object from the created entities.
+        3. Update the description of the DP Offload NIC Profile.
+        4. Log the success or failure of the update operation.
+        5. Teardown the test entities.
+        6. Log the deletion of the DP Offload NIC Profile.
+
+        Raises:
+            ExpError: If the test fails.
+        """
         ent_mng = self.setup_obj.get_entity_manager()
         ent_mng.create_test_entities(self.test_args['topology'])
         objs=ent_mng.name_obj_map
@@ -43,6 +71,19 @@ class TestNicProfile(BaseTest):
         INFO("DELETED DP OFFLOAD NIC PROFILE")
         
     def test_attach_sriov_nic_profile(self):
+        """
+        Test the attachment of SR-IOV NIC Profile to a VM.
+
+        This test performs the following steps:
+        1. Create test entities based on the provided topology.
+        2. Retrieve the SR-IOV NIC Profile and VM objects from the created entities.
+        3. Check if the SR-IOV NIC Profile is attached to the VM.
+        4. Log the success or failure of the attachment validation.
+        5. Teardown the test entities.
+
+        Raises:
+            ExpError: If the NIC Profile is not attached to the VM.
+        """
         ent_mng = self.setup_obj.get_entity_manager()
         ent_mng.create_test_entities(self.test_args['topology'])
         objs=ent_mng.name_obj_map
@@ -74,8 +115,22 @@ class TestNicProfile(BaseTest):
         vm_obj=objs['sriov_vm0']
         vm_obj.remove()
             # INFO(obj.get_vm_data())
-        # ent_mng.test_teardown()
+        ent_mng.test_teardown()
     def test_attach_dp_offload_nic_profile(self):
+        """
+        Test the attachment of DP Offload NIC Profile to a VM.
+
+        This test performs the following steps:
+        1. Create test entities based on the provided topology.
+        2. Retrieve the DP Offload NIC Profile and VM objects from the created entities.
+        3. Check if the DP Offload NIC Profile is attached to the VM.
+        4. Validate the NIC Profile attachment using OVN Validator.
+        5. Log the success or failure of the attachment validation.
+        6. Teardown the test entities.
+
+        Raises:
+            ExpError: If the NIC Profile is not attached to the VM or validation fails.
+        """
         ent_mng = self.setup_obj.get_entity_manager()
         ent_mng.create_test_entities(self.test_args['topology'])
         objs=ent_mng.name_obj_map
@@ -102,6 +157,19 @@ class TestNicProfile(BaseTest):
         # ent_mng.test_teardown()
         
     def test_ew_traffic_with_dp_offload(self):
+        """
+        Test East-West traffic with DPoffload.
+
+        This test performs the following steps:
+        1. Create test entities based on the provided topology.
+        2. Validate offload flows between VMs.
+        3. Retrieve IP addresses of the VMs.
+        4. Run iperf tests between the VMs for both TCP and UDP traffic.
+        5. Teardown the test entities.
+
+        Raises:
+            ExpError: If offload flows are not validated or any step in the test fails.
+        """
         ent_mng = self.setup_obj.get_entity_manager()
         ent_mng.create_test_entities(self.test_args['topology'])
         objs=ent_mng.name_obj_map
@@ -119,8 +187,23 @@ class TestNicProfile(BaseTest):
         INFO(result)
         result = parse_iperf_output(iperf_test(vm1_acc_ip,vm2_acc_ip,vm1_ip,vm2_ip,udp=True))
         INFO(result)
-        # ent_mng.test_teardown()
+        ent_mng.test_teardown()
     def test_dp_offload_for_fip(self):
+        """
+        Test DPoffload for Floating IP (FIP).
+
+        This test performs the following steps:
+        1. Create test entities based on the provided topology.
+        2. Retrieve the SSH IP addresses of the VMs.
+        3. Start continuous ping between the VMs.
+        4. Validate offloaded flows on AHV.
+        5. Stop continuous ping between the VMs.
+        6. Run iperf tests between the VMs for both TCP and UDP traffic.
+        7. Teardown the test entities.
+
+        Raises:
+            ExpError: If offload flows are not validated or any step in the test fails.
+        """
         ent_mng = self.setup_obj.get_entity_manager()
         objs=ent_mng.create_test_entities(self.test_args['topology'])
         ovn_val=OvnValidator(self.setup_obj)
@@ -157,6 +240,20 @@ class TestNicProfile(BaseTest):
     #         INFO("Offload flows validated")
     #     ent_mng.test_teardown()
     def test_vm_ops_for_dp_offloaded_entities(self):
+        """
+        Test VM operations for Data Plane offloaded entities.
+
+        This test performs the following steps:
+        1. Create test entities based on the provided topology.
+        2. Retrieve the SSH IP addresses and IP addresses of the VMs.
+        3. Run iperf tests between the VMs for both TCP and UDP traffic.
+        4. Start continuous ping between the VMs.
+        5. Validate offloaded flows for East-West (EW) and North-West (NW) traffic.
+        6. Perform VM operations and validate the results.
+
+        Raises:
+            ExpError: If offload flows are not validated or any step in the test fails.
+        """
         ent_mng = self.setup_obj.get_entity_manager()
         ent_mng.create_test_entities(self.test_args['topology'])
         objs=ent_mng.name_obj_map
@@ -232,6 +329,23 @@ class TestNicProfile(BaseTest):
         
         # ent_mng.test_teardown()
     def test_data_path_ovn_controller_is_down(self):
+        """
+        Test Data Path functionality when OVN Controller is down.
+
+        This test performs the following steps:
+        1. Create test entities based on the provided topology.
+        2. Retrieve the SSH IP addresses and IP addresses of the VMs.
+        3. Start continuous ping between the VMs.
+        4. Validate offloaded flows for East-West (EW) and North-South (NS) traffic.
+        5. Retrieve the AHV object for the active gateway node.
+        6. Restart the OVN Controller on the gateway node.
+        7. Run iperf tests between the VMs for both TCP and UDP traffic.
+        8. Validate the offloaded flows for EW and NS traffic when the OVN Controller is down.
+        9. Log the success or failure of the flow validation.
+
+        Raises:
+            ExpError: If offload flows are not validated or any step in the test fails.
+        """
         ent_mng = self.setup_obj.get_entity_manager()
         ent_mng.create_test_entities(self.test_args['topology'])
         objs=ent_mng.name_obj_map
@@ -242,11 +356,11 @@ class TestNicProfile(BaseTest):
         vm1_ip=ovn_val.get_ip_of_vm("sub1.vm0")
         vm2_ip=ovn_val.get_ip_of_vm("sub2.vm0")
         vm3_ip=ovn_val.get_ip_of_vm("sub3.vm0")
-        result=parse_iperf_output(iperf_test(vm1_acc_ip,vm2_acc_ip,vm1_ip,vm2_ip))
-        INFO(f"result of tcp of EW:{result}")
+        # result=parse_iperf_output(iperf_test(vm1_acc_ip,vm2_acc_ip,vm1_ip,vm2_ip))
+        # INFO(f"result of tcp of EW:{result}")
 
-        result=parse_iperf_output(iperf_test(vm1_acc_ip,vm3_acc_ip,vm1_acc_ip,vm3_acc_ip,udp=True))
-        INFO(f"result of tcp of NS:{result}")
+        # result=parse_iperf_output(iperf_test(vm1_acc_ip,vm3_acc_ip,vm1_acc_ip,vm3_acc_ip))
+        # INFO(f"result of tcp of NS:{result}")
         start_continous_ping(vm1_acc_ip,vm2_ip)
         start_continous_ping(vm1_acc_ip,vm3_acc_ip)
         flow_val_1=ovn_val.validate_offload_flows("sub1.vm0","sub2.vm0")
@@ -260,30 +374,42 @@ class TestNicProfile(BaseTest):
         else:
             INFO("Offloaded Flows are validated in NS")
         # ahv_obj=
-        INFO("restarting ovn controller on all nodes")
-        for ahv_obj in self.setup_obj.cvm.AHV_obj_dict.values():
-            ahv_obj.execute("sudo systemctl stop ovn-controller")
-        time.sleep(5)
+        vpc_obj=objs['dp_vpc1']
+        vpc_data=vpc_obj.get()
+        INFO(vpc_data)
         try:
+            ahv_ip=vpc_data['external_subnets'][0]['active_gateway_nodes'][0]["node_ip_address"]['ipv4']['value']
+            ahv_obj=self.setup_obj.cvm.AHV_obj_dict[ahv_ip]
+        except KeyError as e:
+            ERROR(e)
+            raise ExpError("Failed to get AHV object")
+        INFO("restarting ovn controller on gateway node")
+        
+        ahv_obj.execute("sudo systemctl stop ovn-controller")
+        time.sleep(5)
+        
+        try:
+            result=parse_iperf_output(iperf_test(vm1_acc_ip,vm2_acc_ip,vm1_ip,vm2_ip))
+            INFO(f"result of tcp of EW:{result}")
+
+            result=parse_iperf_output(iperf_test(vm1_acc_ip,vm3_acc_ip,vm1_acc_ip,vm3_acc_ip))
+            INFO(f"result of tcp of NS:{result}")
             flow_val_1=ovn_val.validate_offload_flows("sub1.vm0","sub2.vm0")
             if not flow_val_1:
-                for ahv_obj in self.setup_obj.cvm.AHV_obj_dict.values():
-                    ahv_obj.execute("sudo systemctl start ovn-controller")
+                
                 raise ExpError("Offload flows not validated in EW when ovn controller is down")
             else:
                 INFO("Offloaded Flows are validated in EW when  ovn controller is down")
             flow_val_2=ovn_val.validate_offloaded_flows_on_ahv1("sub3.vm0","sub1.vm0")
             if flow_val_2:
-                for ahv_obj in self.setup_obj.cvm.AHV_obj_dict.values():
-                    ahv_obj.execute("sudo systemctl start ovn-controller")
-                raise ExpError("Offload flows not validated in NS when ovn controller is down")
+                raise ExpError("flows are offloaded in NS when ovn controller is down")
             else:
-                INFO("Offloaded Flows are validated in NS when ovn controller is down")
-            for ahv_obj in self.setup_obj.cvm.AHV_obj_dict.values():
-                ahv_obj.execute("sudo systemctl start ovn-controller")
+                INFO("flows are not validated in NS when ovn controller is down")
+            
+            ahv_obj.execute("sudo systemctl start ovn-controller")
         except ExpError as e:
-            for ahv_obj in self.setup_obj.cvm.AHV_obj_dict.values():
-                ahv_obj.execute("sudo systemctl start ovn-controller")
+            
+            ahv_obj.execute("sudo systemctl start ovn-controller")
             raise e
         res1=stop_continous_ping(vm1_acc_ip,vm2_ip)
         res2=stop_continous_ping(vm1_acc_ip,vm3_acc_ip)
@@ -291,6 +417,24 @@ class TestNicProfile(BaseTest):
         INFO(res2)
         # ent_mng.test_teardown()
     def test_dp_offload_with_process_restarts(self):
+        """
+        Restart various services and update NIC profiles.
+
+        This function performs the following steps:
+        1. Restart AHV services and update NIC profiles.
+        2. Restart PC services and update NIC profiles.
+        3. Restart CVM services and update NIC profiles.
+
+        For each service restart:
+        - Create entities based on the provided topology.
+        - Retrieve and log NIC profile details for each entity.
+        - Update the description of each NIC profile.
+        - Log the success or failure of the update operation.
+        - Remove each NIC profile entity.
+
+        Raises:
+            ExpError: If the update operation fails for any NIC profile.
+        """
         ent_mng = self.setup_obj.get_entity_manager()
         INFO(self.test_args)
         ent_mng.create_test_entities(self.test_args['topology'])
@@ -328,53 +472,53 @@ class TestNicProfile(BaseTest):
         for serv in ahv_services:
             for ahv_obj in self.setup_obj.cvm.AHV_obj_dict.values():
                 ahv_obj.execute(f"systemctl restart {serv}")
-                # objs=ent_mng.create_entities(self.test_args['add_topology'])
-                # for obj in objs.values():
-                #     INFO(obj.get_nic_profile_details())
-                #     try:
-                #         data={}
-                #         change_description=obj._name+" updated"
-                #         data["description"]=change_description
-                #         obj.update(**data)
-                #         INFO("successfully updated nic profile")
-                #     except ExpError as e:
-                #         ERROR(e)
-                #         raise ExpError("Failed to update nic profile")
-                # for obj in objs.values():
-                #     obj.remove()
+                objs=ent_mng.create_entities(self.test_args['add_topology'])
+                for obj in objs.values():
+                    INFO(obj.get_nic_profile_details())
+                    try:
+                        data={}
+                        change_description=obj._name+" updated"
+                        data["description"]=change_description
+                        obj.update(**data)
+                        INFO("successfully updated nic profile")
+                    except ExpError as e:
+                        ERROR(e)
+                        raise ExpError("Failed to update nic profile")
+                for obj in objs.values():
+                    obj.remove()
         for serv in pc_services:
             self.setup_obj.pcvm.execute(f"genesis stop {serv};cluster start")
-            # objs=ent_mng.create_entities(self.test_args['add_topology'])
-            # for obj in objs.values():
-            #     INFO(obj.get_nic_profile_details())
-            #     try:
-            #         data={}
-            #         change_description=obj._name+" updated"
-            #         data["description"]=change_description
-            #         obj.update(**data)
-            #         INFO("successfully updated nic profile")
-            #     except ExpError as e:
-            #         ERROR(e)
-            #         raise ExpError("Failed to update nic profile")
-            # for obj in objs.values():
-            #         obj.remove()
+            objs=ent_mng.create_entities(self.test_args['add_topology'])
+            for obj in objs.values():
+                INFO(obj.get_nic_profile_details())
+                try:
+                    data={}
+                    change_description=obj._name+" updated"
+                    data["description"]=change_description
+                    obj.update(**data)
+                    INFO("successfully updated nic profile")
+                except ExpError as e:
+                    ERROR(e)
+                    raise ExpError("Failed to update nic profile")
+            for obj in objs.values():
+                    obj.remove()
         for serv in cvm_services:
             for cvm_obj in self.setup_obj.cvm.cvm_obj_dict.values():
                 cvm_obj.execute(f"genesis stop {serv};cluster start")
-                # objs=ent_mng.create_entities(self.test_args['add_topology'])
-                # for obj in objs.values():
-                #     INFO(obj.get_nic_profile_details())
-                #     try:
-                #         data={}
-                #         change_description=obj._name+" updated"
-                #         data["description"]=change_description
-                #         obj.update(**data)
-                #         INFO("successfully updated nic profile")
-                #     except ExpError as e:
-                #         ERROR(e)
-                #         raise ExpError("Failed to update nic profile")
-                # for obj in objs.values():
-                #     obj.remove()
+                objs=ent_mng.create_entities(self.test_args['add_topology'])
+                for obj in objs.values():
+                    INFO(obj.get_nic_profile_details())
+                    try:
+                        data={}
+                        change_description=obj._name+" updated"
+                        data["description"]=change_description
+                        obj.update(**data)
+                        INFO("successfully updated nic profile")
+                    except ExpError as e:
+                        ERROR(e)
+                        raise ExpError("Failed to update nic profile")
+                for obj in objs.values():
+                    obj.remove()
                     
                     
         

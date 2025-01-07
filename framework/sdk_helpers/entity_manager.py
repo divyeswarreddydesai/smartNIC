@@ -332,6 +332,7 @@ class EntityManager:
         for i in range(kwargs.get("count")):
             kwargs["name"]=name+str(i)
             ent_obj = VmV4SDK(self.pcvm,self.name_obj_map, **kwargs)
+            INFO(i)
             ent_obj=ent_obj.create()
             ent_objs.append(ent_obj)
             time.sleep(1)

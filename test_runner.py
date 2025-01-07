@@ -2,10 +2,12 @@
 import json
 import importlib
 import re
+import time
 import ast
 import argparse
 import logging
 import inspect
+import socket
 from framework.vm_helpers.consts import *
 from framework.vm_helpers.ssh_client import SSHClient
 from framework.sdk_helpers.image import ImageV4SDK
@@ -16,7 +18,9 @@ from framework.logging.log_config import setup_logger
 from framework.logging.error import ExpError
 from framework.vm_helpers.linux_os import LinuxOperatingSystem
 from packaging import version
+import requests
 import ipaddress
+import urllib3
 import os
 test_results={}
 def setup_method_logging(log_file):
@@ -82,9 +86,7 @@ def smart_nic_setup(setup_obj,skip_driver):
                 if i not in setup_obj.cvm.AHV_nic_port_map.keys():
                     setup_obj.cvm.AHV_nic_port_map[i]={}
                 try:
-                    result=cvm.execute("/home/nutanix/tmp/partition.py show {0} all".format(i))
-                    result=result["stdout"]
-                    physical_functions = extract_physical_functions(result)
+                    
                     if not setup_obj.cvm.AHV_nic_port_map.get(i):
                         
                         try:
@@ -108,11 +110,11 @@ def smart_nic_setup(setup_obj,skip_driver):
                                 
                                 return port_names
                             port_uuid_map=extract_port_names(res)
-                            setup_obj.cvm.AHV_nic_port_map[i] = {k: v for k, v in port_uuid_map.items() if k in physical_functions}
+                            setup_obj.cvm.AHV_nic_port_map[i] = port_uuid_map
                         except Exception as e:
                             ERROR(f"Failed to list host NICs: {e}")
                         
-                        for port in physical_functions:
+                        for port in setup_obj.cvm.AHV_nic_port_map[i].keys():
                             try:
                                 response=cvm.execute(f"acli net.get_host_nic {i} {port}")["stdout"]
                                 def extract_supported_capabilities(output):
@@ -154,12 +156,12 @@ def smart_nic_setup(setup_obj,skip_driver):
                                     min_firm="22.41.1000 (MT_0000000437)"
                                     if version.parse(firm[0])<version.parse(min_firm):
                                         ERROR(f"Minimum firmware version required is {min_firm}. Current firmware version is {firm[0]}.")
-                                        raise ExpError(f"Minimum firmware version required is {min_firm}. Current firmware version is {firm[0]}.If you would still like to run it use --use_underlay flag")
+                                        raise ExpError(f"Minimum firmware version required is {min_firm}. Current firmware version is {firm[0]}.If you would still like to run it use --skip_fw_check flag")
                                     driver_version=extract_driver_version(response)
                                     min_driver="mlx5_core:23.10-3.2.2"
                                     if version.parse(driver_version[0])<version.parse(min_driver):
                                         ERROR(f"Minimum driver version required is {min_driver}. Current driver version is {driver_version[0]}.")
-                                        raise ExpError(f"Minimum driver version required is {min_driver}. Current driver version is {driver_version[0]}.If you would still like to run it use --use_underlay flag")
+                                        raise ExpError(f"Minimum driver version required is {min_driver}. Current driver version is {driver_version[0]}.If you would still like to run it use --skip_fw_check flag")
                                 setup_obj.cvm.AHV_nic_port_map[i][port]["nic_family"] = extract_nic_family(response)
                             except Exception as e:
                                 ERROR(f"Failed to get nic details: {e}")
@@ -195,7 +197,7 @@ def get_directory_path(directory_name, root_folder='tests'):
         if directory_name in dirs:
             return os.path.join(root, directory_name)
     return None
-def run_tests_in_directory(directory, ssh_client,host_config,skip_driver):
+def run_tests_in_directory(directory, ssh_client,host_config,install_driver):
     # if directory.startswith("tests/"):
     #         relative_path = directory[len("tests/"):]
     #         latest_logs_path = os.path.join("latest_test_dir_logs", relative_path)
@@ -204,7 +206,7 @@ def run_tests_in_directory(directory, ssh_client,host_config,skip_driver):
     for root, sub_dir, files in os.walk(directory):
         for sub in sub_dir:
             sub_directory=os.path.join(directory,sub)
-            run_tests_in_directory(sub_directory, ssh_client,host_config,skip_driver)
+            run_tests_in_directory(sub_directory, ssh_client,host_config,install_driver)
         for file in files:
             # INFO(file)
             if file.endswith(".py"):
@@ -258,7 +260,7 @@ def run_tests_in_directory(directory, ssh_client,host_config,skip_driver):
                             data = {"kind": "subnet", "params": lan_data_copy}
                             INFO(class_config)
                             class_config.append(data)
-                        if not skip_driver:
+                        if install_driver:
                             class_config.append(driver_data)
                         if nic_data.get('nic_family',"")!="":
                             for conf in class_config:
@@ -315,7 +317,7 @@ def run_tests_in_directory(directory, ssh_client,host_config,skip_driver):
                                             if conf.get('kind',"")=="nic_profile_association" or conf.get('kind',"")=="nic_profile_disassociation":
                                                 conf['params']['port_name']=nic_data['port']
                                                 conf['params']['host_ip']=nic_data['host_ip']
-                                    if not skip_driver:
+                                    if install_driver:
                                         test_config.append(driver_data)
                                     test_args["topology"]=test_config
                                     # method_log_file=os.path.join(latest_logs_path,f"{class_name}_{function_name}.log")
@@ -350,7 +352,7 @@ def run_tests_in_directory(directory, ssh_client,host_config,skip_driver):
                                 # test_results[test_path] = 'fail'
                                 return
 
-def run_specific_test_case(test_path, ssh_client,host_config,skip_driver):
+def run_specific_test_case(test_path, ssh_client,host_config,install_driver):
     components = test_path.split('.')
     current_path = 'tests'
     config_path = ''
@@ -421,7 +423,7 @@ def run_specific_test_case(test_path, ssh_client,host_config,skip_driver):
         "kind": "guest_vm_driver",
         "params": guest_driver_data
     }
-    if not skip_driver:
+    if install_driver:
         class_config.append(driver_data)
     
     function_name = remaining_components[1]
@@ -443,7 +445,7 @@ def run_specific_test_case(test_path, ssh_client,host_config,skip_driver):
             if conf.get('kind',"")=="nic_profile_association" or conf.get('kind',"")=="nic_profile_disassociation" or conf.get('kind',"")=="nic_profile":
                 conf['params']['port_name']=nic_data['port']
                 conf['params']['host_ip']=nic_data['host_ip']
-    if not skip_driver:
+    if install_driver:
         test_config.append(driver_data)
     test_args["topology"]=test_config
     
@@ -505,9 +507,26 @@ def run_specific_test_case(test_path, ssh_client,host_config,skip_driver):
             ERROR(f"Error running teardown method in {cls.__name__}: {e}")
             # test_results[test_path] = 'fail'
             return
-
-
-def parse_config_and_prep(setup,host_data,skip_driver):
+def find_free_port():
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+        s.bind(('', 0))
+        # INFO(s)
+        return s.getsockname()[1]
+def is_port_in_use(port):
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+        # INFO(s.connect_ex(('localhost', port)))
+        return (s.connect_ex(('localhost', port)) == 0) or (s.connect_ex(('localhost', port)) == 111)
+def is_url_reachable(url):
+    http = urllib3.PoolManager()
+    try:
+        INFO(f"Checking URL: {url}")
+        response = http.request('HEAD', url, timeout=10)
+        INFO(f"Received response: {response.status}")
+        return response.status == 200
+    except urllib3.exceptions.HTTPError as e:
+        ERROR(f"URL {url} is not reachable: {e}")
+        return False
+def parse_config_and_prep(setup,host_data):
     config=host_data['cluster_host_config']
     def_config=host_data['default_config']
     vm_image_details=config['vm_image']
@@ -532,7 +551,8 @@ def parse_config_and_prep(setup,host_data,skip_driver):
                     "source_uri": vm_image_details['vm_image_location'],
                 
             }
-        
+            image_obj=ImageV4SDK(setup.pcvm,**vm_args)
+            image_obj.create()
         else:
             if vm_image_details.get('use_vm_default',True):
                 image_path=os.path.join(os.environ.get('PYTHONPATH'),vm_image_details['vm_image_location'])
@@ -540,29 +560,52 @@ def parse_config_and_prep(setup,host_data,skip_driver):
                 image_path=vm_image_details['vm_image_location']
             if not os.path.isfile(image_path):
                 raise ExpError(f"File {image_path} does not exist.")
-            setup.pcvm.transfer_to(image_path, "/home/nutanix")
+            # setup.pcvm.transfer_to(image_path, "/home/nutanix")
             new_ssh=LinuxOperatingSystem(setup.pcvm.ip,username=PCVM_USER, password=PCVM_PASSWORD)
             new_ssh.execute("cd /home/nutanix")
-            new_ssh.execute("yes | modify_firewall - open -i eth0 -p 8000 -a")
-            new_ssh.execute("timeout 600 python3 -m http.server 8000",async_=True)
-            vm_args={
-                
-                    "name": vm_image_details['vm_image_name'],
-                    "bind": vm_image_details.get('bind',False),
-                    "source_uri": f'http://{setup.pcvm.ip}:8000/vm_image.qcow2'
-                
-            }
+            remote_image_path = f"/home/nutanix/{os.path.basename(image_path)}"
+            file_exists = new_ssh.execute(f"test -f {remote_image_path} && echo 'exists' || echo 'not exists'")['stdout'].strip()
+
+            if file_exists == 'not exists':
+                new_ssh.transfer_to(image_path, "/home/nutanix")
+
+            port = 8001
+            image_name = os.path.basename(image_path)
+            while port <8005:
+                new_ssh.execute(f"yes | modify_firewall - open -i eth0 -p {port} -a")
+                resp = new_ssh.execute(f"python3 -m http.server {port} > output.log 2>&1",background=True)
+                INFO(resp)
+                # pid = new_ssh.execute(f"cat /tmp/http_server_{port}.pid")
+                INFO(f"HTTP server started on port {port}.")
+                vm_args={
+                    
+                        "name": vm_image_details['vm_image_name'],
+                        "bind": vm_image_details.get('bind',False),
+                        "source_uri": f'http://{setup.pcvm.ip}:{port}/{image_name}',
+                    
+                }
+                try:
+                    image_obj=ImageV4SDK(setup.pcvm,**vm_args)
+                    image_obj.create()
+                    break
+                except Exception as e:
+                    INFO(f"Failed to create image with port {port}: {e}")
+                    port += 1
+            if port == 8005:
+                raise ExpError("Failed to start HTTP server.")
             # setup.pcvm.execute(f"nuclei image.create name={vm_image_details['vm_image_name']} source_uri=http://{setup.pcvm.ip}:8000/vm_image.qcow2 image_type=DISK_IMAGE")
-        image_obj=ImageV4SDK(setup.pcvm,**vm_args)
-        image_obj.create()
+        
+        
+        # if new_ssh and pid:
+        #     new_ssh.execute(f"kill -9 {pid}")
+            
       
     try:
         new_ssh.execute("fuser -k 8000/tcp")
     except Exception as e:
         # Ignore the error and continue
         pass
-    if skip_driver:
-        return
+    
     
     
     
@@ -571,13 +614,13 @@ def parse_config_and_prep(setup,host_data,skip_driver):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Test Runner")
     group = parser.add_mutually_exclusive_group(required=True)
-    group.add_argument("--run_all", action="store_true", help="Run all tests")
+    #group.add_argument("--run_all", action="store_true", help="Run all tests")
     group.add_argument("--run_sanity", action="store_true", help="Run all tests from the sanity directory")
     group.add_argument("--test_dir", type=str, help="Path to a specific test directory to run")
     group.add_argument("--test_func", type=str, help="Name of the test directory to run from the JSON file")
     parser.add_argument("--debug", action="store_true", help="Enable debug mode",default=False)
-    parser.add_argument("--use_underlay", action="store_true", help="Use underlay",default=False)
-    
+    parser.add_argument("--vfdriver", action="store_true", help="Install Guest VF driver",default=False)
+    parser.add_argument("--skip_fw_check", action="store_true", help="Skip firmware and driver version check",default=False)
     args = parser.parse_args()
     if args.debug:
         setup_logger(True)
@@ -589,8 +632,8 @@ if __name__ == "__main__":
     host_config = load_config(host_path)['cluster_host_config']
     # INFO(setup_config)
     setup=SETUP(host_config["ips"]['pc_ip'],host_config["ips"]['pe_ip'])
-    parse_config_and_prep(setup,host_data,args.use_underlay)
-    smart_nic_setup(setup,args.use_underlay)
+    parse_config_and_prep(setup,host_data,args.vfdriver)
+    smart_nic_setup(setup,args.skip_fw_check)
     tests_folder = 'tests'
     log_dir = 'logs'
     # latest_logs="latest_test_dir_logs"
@@ -602,20 +645,20 @@ if __name__ == "__main__":
     if args.run_sanity:
         test_directory="tests/sanity_tests"
         if os.path.isdir(test_directory):
-            run_tests_in_directory(test_directory, setup,host_config,args.use_underlay)
+            run_tests_in_directory(test_directory, setup,host_config,args.vfdriver)
         else:
             INFO(f"Test directory {test_directory} does not exist.")
-    if args.run_all:
-        run_tests_in_directory(tests_folder, setup,host_config,args.use_underlay)
+    #if args.run_all:
+    #  run_tests_in_directory(tests_folder, setup,host_config,args.vfdriver)
     elif args.test_dir:
         test_directory = os.path.join(tests_folder, args.test_dir)
         if os.path.isdir(test_directory):
-            run_tests_in_directory(test_directory, setup,host_config,args.use_underlay)
+            run_tests_in_directory(test_directory, setup,host_config,args.vfdriver)
         else:
             INFO(f"Test directory {test_directory} does not exist.")
     elif args.test_func:
         INFO(f"Running test case {args.test_func}")
-        run_specific_test_case( args.test_func, setup,host_config,args.use_underlay)
+        run_specific_test_case( args.test_func, setup,host_config,args.vfdriver)
     INFO("Test Results:")
     for test_name, result in test_results.items():
         RESULT(f"{test_name}: {result}")
