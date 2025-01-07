@@ -50,22 +50,31 @@ You can provide the NIC configuration details to test a particular NIC. If you d
 
 ### Running the `test_runner.py` Script
 The `test_runner.py` script is designed to run various tests on the SmartNIC setup. Below are the details on how to run the script with different command-line arguments and the available options.
-
+### Sanity Tests
+1. **test_sriov_nic_profile_CRUD**
+2. **test_dp_offload_nic_profile_CRUD**
+3. **test_attach_sriov_nic_profile**
+4. **test_attach_dp_offload_nic_profile**
+5. **test_ew_traffic_with_dp_offload**
+6. **test_dp_offload_for_fip**
+7. **test_vm_ops_for_dp_offloaded_entities**
+8. **test_data_path_ovn_controller_is_down**
+9. **test_dp_offload_with_process_restarts**
+    
 #### Command-Line Arguments
 The script accepts several command-line arguments to control its behavior. Here is a description of each argument:
 
-- `--run_all`: Run all tests set to true in the JSON file.
-- `--run_sanity`: Run all tests from the sanity directory.
-- `--test_dir <path>`: Path to a specific test directory to run.
-- `--test_func <name>`: Name of the test function to run from the JSON file.
+- `--run_sanity`: Run all sanity tests from the sanity directory.
+- `--test_dir <path>`: Path to a specific test directory inside the tests folder to run.
+- `--test_func <name>`: Path of the test function to run from the test file.
 - `--debug`: Enable debug mode.
 - `--use_underlay`: Use underlay (default is False).
 
 Example usage:
 ```sh
-python test_runner.py --run_all
-python test_runner.py --test_dir /path/to/test/dir
-python test_runner.py --test_func test_function_name --debug
+python test_runner.py --run_sanity --use_underlay
+python test_runner.py --test_dir "sanity_tests"
+python test_runner.py --test_func "sanity_tests.tool_tests.TestNicProfile.test_ew_traffic_with_dp_offload" --debug
 ```
 
 
