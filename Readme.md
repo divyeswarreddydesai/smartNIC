@@ -68,11 +68,14 @@ The script accepts several command-line arguments to control its behavior. Here 
 - `--test_dir <path>`: Path to a specific test directory inside the tests folder to run.
 - `--test_func <name>`: Path of the test function to run from the test file.
 - `--debug`: Enable debug mode.
+- `--vfdriver`: installs VF guest driver on UBVMs
+- `--skip_fw_check`: skips firmware and driver version checks
+
 - `--use_underlay`: Use underlay (default is False).
 
 Example usage:
 ```sh
-python test_runner.py --run_sanity --use_underlay
+python test_runner.py --run_sanity --vfdriver –skip_fw_check
 python test_runner.py --test_dir "sanity_tests"
 python test_runner.py --test_func "sanity_tests.tool_tests.TestNicProfile.test_ew_traffic_with_dp_offload" --debug
 ```
