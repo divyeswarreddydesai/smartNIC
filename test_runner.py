@@ -18,6 +18,8 @@ from framework.logging.log_config import setup_logger
 from framework.logging.error import ExpError
 from framework.vm_helpers.linux_os import LinuxOperatingSystem
 from packaging import version
+from semver import Version
+from distutils.version import LooseVersion
 import requests
 import ipaddress
 import urllib3
@@ -149,20 +151,33 @@ def smart_nic_setup(setup_obj,skip_driver):
                                         driver_version.append(match.group(1))
                                     
                                     return driver_version
-                                
+                                setup_obj.cvm.AHV_nic_port_map[i][port]["nic_family"] = extract_nic_family(response)
                                 setup_obj.cvm.AHV_nic_port_map[i][port]["supported_capabilities"] = extract_supported_capabilities(response)
                                 if len(setup_obj.cvm.AHV_nic_port_map[i][port]["supported_capabilities"])>0 and not skip_driver:
-                                    firm=extract_firmware_version(response)
-                                    min_firm="22.41.1000 (MT_0000000437)"
-                                    if version.parse(firm[0])<version.parse(min_firm):
-                                        ERROR(f"Minimum firmware version required is {min_firm}. Current firmware version is {firm[0]}.")
+                                    firm=extract_firmware_version(response)[0].split(" ")
+                                    min_firm="22.41.1000 (MT_0000000437)".split(" ")
+                                    DEBUG(firm)
+                                    DEBUG(min_firm)
+                                    if (Version.parse(firm[0])<Version.parse(min_firm[0]))==-1:
+                                        setup_obj.cvm.AHV_nic_port_map[i].pop(port)
+                                        ERROR(f"Minimum firmware version required is {min_firm}. Current firmware version is {firm[0]} for port {port} in {i}.")
                                         raise ExpError(f"Minimum firmware version required is {min_firm}. Current firmware version is {firm[0]}.If you would still like to run it use --skip_fw_check flag")
-                                    driver_version=extract_driver_version(response)
-                                    min_driver="mlx5_core:23.10-3.2.2"
-                                    if version.parse(driver_version[0])<version.parse(min_driver):
-                                        ERROR(f"Minimum driver version required is {min_driver}. Current driver version is {driver_version[0]}.")
+                                    DEBUG("firware version satisfied")
+                                    driver_version=extract_driver_version(response)[0].split(":")
+                                    min_driver="mlx5_core:23.10-3.2.2".split(":")
+                                    # parsed=LooseVersion(driver_version[1])
+                                    # INFO(parsed)
+                                    driver_version[1]= driver_version[1].replace('-', '.0-')
+                                    min_driver[1]= min_driver[1].replace('-', '.0-')
+                                    # DEBUG(driver_version)
+                                    # DEBUG(min_driver)
+                                    if (Version.parse(driver_version[1])<Version.parse(min_driver[1]))==-1 and driver_version[0]==min_driver[0]:
+                                        setup_obj.cvm.AHV_nic_port_map[i].pop(port)
+                                        ERROR(f"Minimum driver version required is {min_driver}. Current driver version is {driver_version[0]} for port {port} in {i}.")
                                         raise ExpError(f"Minimum driver version required is {min_driver}. Current driver version is {driver_version[0]}.If you would still like to run it use --skip_fw_check flag")
-                                setup_obj.cvm.AHV_nic_port_map[i][port]["nic_family"] = extract_nic_family(response)
+                                    DEBUG("driver version satisfied")
+                                    INFO("{0} firmware version is {1}".format(port,firm[0]))
+                                
                             except Exception as e:
                                 ERROR(f"Failed to get nic details: {e}")
                             
@@ -620,7 +635,7 @@ if __name__ == "__main__":
     group.add_argument("--test_func", type=str, help="Name of the test directory to run from the JSON file")
     parser.add_argument("--debug", action="store_true", help="Enable debug mode",default=False)
     parser.add_argument("--vfdriver", action="store_true", help="Install Guest VF driver",default=False)
-    parser.add_argument("--skip_fw_check", action="store_true", help="Skip firmware and driver version check",default=False)
+    parser.add_argument("--skip_fw_check", action="store_false", help="Skip firmware and driver version check",default=False)
     args = parser.parse_args()
     if args.debug:
         setup_logger(True)
@@ -632,7 +647,7 @@ if __name__ == "__main__":
     host_config = load_config(host_path)['cluster_host_config']
     # INFO(setup_config)
     setup=SETUP(host_config["ips"]['pc_ip'],host_config["ips"]['pe_ip'])
-    parse_config_and_prep(setup,host_data,args.vfdriver)
+    parse_config_and_prep(setup,host_data)
     smart_nic_setup(setup,args.skip_fw_check)
     tests_folder = 'tests'
     log_dir = 'logs'

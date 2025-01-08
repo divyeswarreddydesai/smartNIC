@@ -36,6 +36,7 @@ class NicProfileV4SDK:
             cap_type=kwargs.get("capability_config").get("capability_type")
         if cap_type:
             cap_type=cap_type.replace('_', '')
+        INFO(kwargs)
         if not kwargs.get("nic_family"):
             kwargs['nic_family'] = "someNicFamily"
         nic_fam=None
@@ -46,6 +47,7 @@ class NicProfileV4SDK:
                 if len(self._cluster.AHV_nic_port_map[ip].keys()):
                     for ports in self._cluster.AHV_nic_port_map[ip]:
                         DEBUG(cap_type)
+                        # DEBUG(self._cluster.AHV_nic_port_map)
                         if cap_type in self._cluster.AHV_nic_port_map[ip][ports]["supported_capabilities"]:
                             DEBUG(self._cluster.AHV_nic_port_map[ip][ports]['nic_family'])
                             nic_fam=self._cluster.AHV_nic_port_map[ip][ports]['nic_family']
