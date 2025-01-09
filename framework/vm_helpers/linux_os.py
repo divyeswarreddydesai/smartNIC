@@ -280,7 +280,7 @@ class LinuxOperatingSystem(AbstractOperatingSystem):
         """
         try:
             if udp_protocol:
-                client_command = f"sudo iperf3 -c {server_ip} -t {duration} -P {parallel} -i 1 -u"
+                client_command = f"sudo iperf3 -c {server_ip} -t {duration} -P {parallel} -i 1 -b 10G -u"
             else:
                 client_command = f"sudo iperf3 -c {server_ip} -t {duration} -P {parallel} -i 1"
             result = self.execute(client_command)

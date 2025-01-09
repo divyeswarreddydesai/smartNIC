@@ -158,7 +158,7 @@ def smart_nic_setup(setup_obj,skip_driver):
                                     min_firm="22.41.1000 (MT_0000000437)".split(" ")
                                     DEBUG(firm)
                                     DEBUG(min_firm)
-                                    if (Version.parse(firm[0])<Version.parse(min_firm[0]))==-1:
+                                    if (Version.parse(firm[0])<Version.parse(min_firm[0])):
                                         setup_obj.cvm.AHV_nic_port_map[i].pop(port)
                                         ERROR(f"Minimum firmware version required is {min_firm}. Current firmware version is {firm[0]} for port {port} in {i}.")
                                         raise ExpError(f"Minimum firmware version required is {min_firm}. Current firmware version is {firm[0]}.If you would still like to run it use --skip_fw_check flag")
@@ -171,7 +171,7 @@ def smart_nic_setup(setup_obj,skip_driver):
                                     min_driver[1]= min_driver[1].replace('-', '.0-')
                                     # DEBUG(driver_version)
                                     # DEBUG(min_driver)
-                                    if (Version.parse(driver_version[1])<Version.parse(min_driver[1]))==-1 and driver_version[0]==min_driver[0]:
+                                    if (Version.parse(driver_version[1])<Version.parse(min_driver[1])) and driver_version[0]==min_driver[0]:
                                         setup_obj.cvm.AHV_nic_port_map[i].pop(port)
                                         ERROR(f"Minimum driver version required is {min_driver}. Current driver version is {driver_version[0]} for port {port} in {i}.")
                                         raise ExpError(f"Minimum driver version required is {min_driver}. Current driver version is {driver_version[0]}.If you would still like to run it use --skip_fw_check flag")

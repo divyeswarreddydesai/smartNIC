@@ -254,7 +254,8 @@
           "description": "NIC Profile with DP_OFFLOAD",
           "capabilityType": "DPOFFLOAD",
           "numVFs": 10,
-          "nic_family": "someNicFamily"
+          "nic_family": "someNicFamily",
+          "bind": true
         }
       },
       {
@@ -350,7 +351,7 @@
           "count": 1,
           "image_name": "vm_image",
           "subnets": ["sub3"],
-          "traffic_subnet": "sub2",
+          "traffic_subnet": "sub3",
           "nic_profiles": ["dp_offload_nic_profile"],
           "bind": true
         }
@@ -855,15 +856,6 @@
         }
       },
       {
-        "kind":"nic_profile_association",
-        "params":{
-          "nic_profile":"dp_offload_nic_profile_test",
-          "skip_if_nic": true,
-          "host_ip":"",
-          "port_name":""
-        }
-      },
-      {
         "kind":"nic_profile",
         "params":{
           "name":"sriov_nic_profile_test",
@@ -872,16 +864,7 @@
           "numVFs":10,
           "nic_family":"someNicFamily"
         }
-      },
-      {
-        "kind":"nic_profile_association",
-        "params":{
-          "nic_profile":"sriov_nic_profile_test",
-          "skip_if_nic": true,
-          "host_ip":"",
-          "port_name":""
-        }
-      }    
+      }   
     ]
   }
 }

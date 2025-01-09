@@ -112,8 +112,6 @@ class TestNicProfile(BaseTest):
             raise ExpError("Nic Profile not attached to VM") 
         else:
             INFO("Nic Profile attachment validated")
-        vm_obj=objs['sriov_vm0']
-        vm_obj.remove()
             # INFO(obj.get_vm_data())
         ent_mng.test_teardown()
     def test_attach_dp_offload_nic_profile(self):
@@ -134,7 +132,7 @@ class TestNicProfile(BaseTest):
         ent_mng = self.setup_obj.get_entity_manager()
         ent_mng.create_test_entities(self.test_args['topology'])
         objs=ent_mng.name_obj_map
-        vm_obj=objs['dp_vm0']
+        vm_obj=objs['sub1.vm0']
         nic_profile_obj=objs['dp_offload_nic_profile']
         vm_nic_data=vm_obj.get_vm_data()['nics']
         nic_attached=False
@@ -148,7 +146,7 @@ class TestNicProfile(BaseTest):
         if not nic_attached:
             raise ExpError("Nic Profile not attached to VM")
         ovn_val=OvnValidator(self.setup_obj)
-        nic_attach_validation=ovn_val.check_nic_profile_ports("dp_vm0","dpoffload")
+        nic_attach_validation=ovn_val.check_nic_profile_ports("sub1.vm0","dpoffload")
         if not nic_attach_validation:
             ERROR("Nic profile not attached to VM")
             raise ExpError("Nic Profile not attached to VM")
@@ -187,7 +185,7 @@ class TestNicProfile(BaseTest):
         INFO(result)
         result = parse_iperf_output(iperf_test(vm1_acc_ip,vm2_acc_ip,vm1_ip,vm2_ip,udp=True))
         INFO(result)
-        ent_mng.test_teardown()
+        # ent_mng.test_teardown()
     def test_dp_offload_for_fip(self):
         """
         Test DPoffload for Floating IP (FIP).
@@ -205,13 +203,14 @@ class TestNicProfile(BaseTest):
             ExpError: If offload flows are not validated or any step in the test fails.
         """
         ent_mng = self.setup_obj.get_entity_manager()
-        objs=ent_mng.create_test_entities(self.test_args['topology'])
+        ent_mng.create_test_entities(self.test_args['topology'])
+        objs=ent_mng.name_obj_map
         ovn_val=OvnValidator(self.setup_obj)
         vm1_acc_ip=ovn_val.get_ssh_ip_of_vm("sub1.vm0")
-        vm2_acc_ip=ovn_val.get_ssh_ip_of_vm("sub2.vm0")
+        vm2_acc_ip=ovn_val.get_ssh_ip_of_vm("sub3.vm0")
         start_continous_ping(vm1_acc_ip,vm2_acc_ip)
         start_continous_ping(vm2_acc_ip,vm1_acc_ip)
-        flows_validated=ovn_val.validate_offloaded_flows_on_ahv1("sub1.vm0","sub2.vm0")
+        flows_validated=ovn_val.validate_offloaded_flows_on_ahv1("sub1.vm0","sub3.vm0")
         stop_continous_ping(vm1_acc_ip,vm2_acc_ip)
         stop_continous_ping(vm2_acc_ip,vm1_acc_ip)  
         if not flows_validated:
@@ -462,10 +461,7 @@ class TestNicProfile(BaseTest):
             raise ExpError("Offload flows not validated in NS")
         else:
             INFO("Offloaded Flows are validated in NS")
-        res1=stop_continous_ping(vm1_acc_ip,vm2_ip)
-        res2=stop_continous_ping(vm1_acc_ip,vm3_acc_ip)
-        INFO(res1)
-        INFO(res2)
+        
         pc_services=["adonis","atlas"]
         ahv_services=["ovs-vswitchd","avm.service","ovn-controller","adm.service"]
         cvm_services=["acropolis"]
@@ -519,6 +515,10 @@ class TestNicProfile(BaseTest):
                         raise ExpError("Failed to update nic profile")
                 for obj in objs.values():
                     obj.remove()
+        res1=stop_continous_ping(vm1_acc_ip,vm2_ip)
+        res2=stop_continous_ping(vm1_acc_ip,vm3_acc_ip)
+        INFO(res1)
+        INFO(res2)
                     
                     
         

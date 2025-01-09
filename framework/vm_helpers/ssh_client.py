@@ -129,22 +129,22 @@ class SSHClient:
                     return {'stdin':stdin,'stdout': stdout, 'std_err':stderr, "status":0}  # Return immediately for async execution
                 # INFO("skipped async")
                 
-                INFO("channel close")
+                DEBUG("channel close")
                 stdout.channel.settimeout(session_timeout)
                 stderr.channel.settimeout(session_timeout)
-                INFO("reading repsonse")
+                DEBUG("reading repsonse")
                 exit_status = stdout.channel.recv_exit_status()
                 stdout_data = stdout.read().decode()
                 stderr_data = stderr.read().decode()
                 stdout.channel.close()
-                INFO("read response")
+                DEBUG("read response")
                 if log_response:
-                    INFO(f"Command response: {stdout_data}")
-                    INFO(f"Command error: {stderr_data}")
+                    DEBUG(f"Command response: {stdout_data}")
+                    DEBUG(f"Command error: {stderr_data}")
 
                 if close_ssh_connection:
                     self.close()
-                INFO("returning")
+                DEBUG("returning")
                 return {
                 'status': exit_status,
                 'stdout': stdout_data,
