@@ -1,7 +1,7 @@
 {
   "cluster_host_config": {
     "ips": {
-        "pe_ip": "10.15.41.62"
+        "pe_ip": "10.15.251.71"
     },
     "guest_vm_driver": {
       "use_driver_default": true,
@@ -15,17 +15,19 @@
       "vm_image_name": "vm_image"
     },
     "nic_config": {
-      "port": "eth4",
-      "host_ip": "10.15.41.65",
+      "bridge": "br0",
+      "port": "eth7",
+      "host_ip": "10.15.251.74",
       "nic_family": ""
     },
     "vlan_config": {
+    "existing_vlan_name":"",
     "vlan_id": 1117,
     "ip": "10.19.117.0",
     "prefix_length": 24,
     "default_gateway_ip": "10.19.117.1",
-    "dhcp_start_ip":"10.19.117.215",
-    "dhcp_end_ip":"10.19.117.222"
+    "dhcp_start_ip":"10.19.117.52",
+    "dhcp_end_ip":"10.19.117.59"
   }
   },
 

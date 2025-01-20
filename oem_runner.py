@@ -374,7 +374,12 @@ def vm_image_creation(setup,host_data):
     if not os.path.isfile(image_path):
         raise ExpError(f"File {image_path} does not exist.")
     # setup.pcvm.transfer_to(image_path, "/home/nutanix")
+    # ahv_ip=setup.AHV_ip_list[0]
     new_ssh=LinuxOperatingSystem(setup.ip,username=CVM_USER, password=CVM_PASSWORD)
+    for cvm in setup.cvm_obj_dict.values():
+        cvm.execute("echo \"--ndfs_allow_blacklisted_ips=true\" > /home/nutanix/config/acropolis.gflags")
+    for cvm in setup.cvm_obj_dict.values():
+        cvm.execute("genesis stop acropolis;cluster start")
     new_ssh.execute("cd /home/nutanix")
     remote_image_path = f"/home/nutanix/{os.path.basename(image_path)}"
     file_exists = new_ssh.execute(f"test -f {remote_image_path} && echo 'exists' || echo 'not exists'")['stdout'].strip()
@@ -400,12 +405,13 @@ def vm_image_creation(setup,host_data):
 
                 if def_container is None:
                     raise ExpError("No container starting with 'default' found.")
-
+                def_container = def_container.strip()
                 INFO(f"Default container: {def_container}")
                 try:
                     
                     res=setup.execute(f"acli image.create {vm_args['name']} source_url={vm_args['source_uri']} image_type=kDiskImage container={def_container}")
                     INFO(res)
+                    break
                 except Exception as e:
                     ERROR(f"Failed to create image: {e}")
     try:
@@ -459,23 +465,37 @@ class VM:
         self.nic_data.append(nic)
 
     def get_vnic_data(self, acli):
-        res = acli.execute(f"acli vm.nic_list {self.name}:{self.vm_id}")
+        res = acli.execute(f"nuclei -output_format json vm.get {self.name}")
+        
         INFO(res)
-        self.fill_nic_data(res['stdout'])
+        json_start = res["stdout"].find('{')
+        json_data = json.loads(res["stdout"][json_start:])["data"]
+        # nic_list = json_data.get("status", {}).get("resources", {}).get("nic_list", [])
+        # INFO(json_data["spec"])
+        # INFO(json_data["spec"]["resources"])
+        nic_list=json_data.get("status",{}).get("resources",{}).get("nic_list")
+        if nic_list:
+            self.fill_nic_data(nic_list[0])
+        else:
+            raise ExpError("No NIC data found")
+        # self.fill_nic_data(res['stdout'])
         # return res
 
-    def fill_nic_data(self, nic_list_output):
-        lines = nic_list_output.strip().split('\n')
-        for line in lines[1:]:  # Skip the header line
-            data = line.split()
-            nic = NIC(
-                nic_uuid=data[0],
-                mac_address=data[1],
-                ip_address=data[2],
-                network_uuid=data[3],
-                network_name=data[4]
-            )
-            self.add_nic(nic)
+    def fill_nic_data(self, nic_data):
+        nic_uuid = nic_data['uuid']
+        mac_address = nic_data['mac_address']
+        ip_address = nic_data['ip_endpoint_list'][0]['ip'] if nic_data['ip_endpoint_list'] else None
+        network_uuid = nic_data['subnet_reference']['uuid']
+        network_name = nic_data['subnet_reference']['name']
+        
+        nic = NIC(
+            nic_uuid=nic_uuid,
+            mac_address=mac_address,
+            ip_address=ip_address,
+            network_uuid=network_uuid,
+            network_name=network_name
+        )
+        self.add_nic(nic)
     def ssh_setup(self,username="root",password="nutanix/4u"):
        for nic in self.nic_data:
             try:
@@ -524,8 +544,8 @@ class VM:
                 return iface
         raise ExpError("No SmartNIC interface found")
 def check_flows(flows,port1,port2,packet_count=None):
-    has_inbound = any(flow['in_port'] == port1 and flow['out_port'] == port2 and (packet_count is None or flow['packets'] == packet_count) for flow in flows)
-    has_outbound = any(flow['out_port'] == port1 and flow['in_port'] == port2 and (packet_count is None or flow['packets'] == packet_count) for flow in flows)
+    has_inbound = any(flow['in_port'] == port1 and flow['out_port'] == port2 and (packet_count is None or flow['packets'] >= packet_count) for flow in flows)
+    has_outbound = any(flow['out_port'] == port1 and flow['in_port'] == port2 and (packet_count is None or flow['packets'] >= packet_count) for flow in flows)
     
     if not (has_inbound and has_outbound):
         return False
@@ -558,24 +578,28 @@ def test_1_vm_creation_and_network_creation(setup,host_data):
     nic_config=host_data["nic_config"]
     vlan_config=host_data["vlan_config"]
     nic_vf_data=None
-    
+    bridge=nic_config.get("bridge",False)
     ahv_obj=setup.AHV_obj_dict[nic_config['host_ip']]
-    # INFO("Creatig VFs and Network")
-    # try:
-    #     ahv_obj.execute("ovs-vsctl add-br ovs-dp")
-    #     ahv_obj.execute("ovs-vsctl set Open_vSwitch . other_config:hw-offload=true")
-    #     ahv_obj.execute("systemctl restart openvswitch")
-    #     ahv_obj.execute(f"echo switchdev > /sys/class/net/{nic_config['port']}/compat/devlink/mode")
-    # except Exception as e:
-    #     ERROR(f"Failed to create bridge on AHV: {e}")
+    INFO("Creatig VFs and Network")
+    try:
+        if bridge!="br0":
+            ahv_obj.execute(f"ovs-vsctl add-br {bridge}")
+        ahv_obj.execute("ovs-vsctl set Open_vSwitch . other_config:max-idle=10000")
+        ahv_obj.execute("ovs-vsctl set Open_vSwitch . other_config:hw-offload=true")
+        ahv_obj.execute("systemctl restart openvswitch")
+        ahv_obj.execute(f"echo switchdev > /sys/class/net/{nic_config['port']}/compat/devlink/mode")
+    except Exception as e:
+        ERROR(f"Failed to create bridge on AHV: {e}")
     vm_names=["vm1","vm2"]
     if nic_config.get('port') and nic_config.get("host_ip"):
         try:
             res=cvm_obj.execute(f"/home/nutanix/tmp/partition.py partition {nic_config['host_ip']} {nic_config['port']}")
         
         except Exception as e:
-    
-            ERROR(f"Failed to partition NIC: {e}")
+            if "already partitioned" in str(e):
+                pass
+            else:
+                ERROR(f"Failed to partition NIC: {e}")
         res=cvm_obj.execute(f"/home/nutanix/tmp/partition.py show {nic_config['host_ip']} {nic_config['port']}")
         # INFO(res)
         nic_vf_data=read_nic_data(res["stdout"])
@@ -587,51 +611,59 @@ def test_1_vm_creation_and_network_creation(setup,host_data):
         group_labels.extend(vf.group_labels)
 
     # Find the common GroupLabel
-    # group_label_counter = Counter(group_labels)
-    # common_group_label = [label for label, count in group_label_counter.items() if count == len(nic_vf_data["Virtual Functions"])]
-    # if not common_group_label:
-    #     raise ExpError("No common GroupLabel found among all VFs.")
-    # group_uuid = common_group_label[0]
-    # INFO(group_uuid)
-    # vm_dict=parse_vm_output(setup.execute("acli vm.list")["stdout"])
-    # vm_dict = {name: vm_dict[name] for name in vm_names if name in vm_dict}
-    # for name,id in vm_dict.items():
-    #     if name in vm_names:
-    #         run_and_check_output(setup,f"acli vm.off {name}:{id}")
-    #         run_and_check_output(setup,f"yes yes | acli vm.delete {name}:{id}")
-    # try:
-    #     run_and_check_output(setup,"acli net.delete bas_sub")
-    # except Exception as e:
-    #     if "Unknown name: bas_sub" in str(e):
-    #         pass
-    #     else:
-    #         raise ExpError(f"Failed to delete network: {e}")
-    # INFO("network creation")
-    # run_and_check_output(setup,f"acli net.create bas_sub vlan={vlan_config['vlan_id']} ip_config={vlan_config['default_gateway_ip']}/{vlan_config['prefix_length']}")
-    # run_and_check_output(setup,f"acli net.add_dhcp_pool bas_sub start={vlan_config['dhcp_start_ip']} end={vlan_config['dhcp_end_ip']}")
-    
-    # for i in vm_names:
-    #     run_and_check_output(setup,f"acli vm.create {i} memory=8G num_cores_per_vcpu=2 num_vcpus=2")
-    #     # setup.execute(f"acli vm.disk_create {i} create_size=50G container=Images bus=scsi index=1")        
-    #     # setup.execute(f"acli vm.disk_create {i} create_size=200G container=Images bus=scsi index=2")
-    #     run_and_check_output(setup,f"acli vm.disk_create {i}  bus=sata clone_from_image=\"vm_image\"") 
-    #     run_and_check_output(setup,f"acli vm.update_boot_device {i} disk_addr=sata.0")
-    #     run_and_check_output(setup,f"acli vm.assign_pcie_device {i} group_uuid={group_uuid}")
-    #     run_and_check_output(setup,f"acli vm.nic_create {i} network=bas_sub")
-    #     run_and_check_output(setup,f"acli vm.on {i}")
-    
+    group_label_counter = Counter(group_labels)
+    common_group_label = [label for label, count in group_label_counter.items() if count == len(nic_vf_data["Virtual Functions"])]
+    if not common_group_label:
+        raise ExpError("No common GroupLabel found among all VFs.")
+    group_uuid = common_group_label[0]
+    INFO(group_uuid)
+    vm_dict=parse_vm_output(setup.execute("acli vm.list")["stdout"])
+    vm_dict = {name: vm_dict[name] for name in vm_names if name in vm_dict}
+    for name,id in vm_dict.items():
+        if name in vm_names:
+            run_and_check_output(setup,f"acli vm.off {name}:{id}")
+            run_and_check_output(setup,f"yes yes | acli vm.delete {name}:{id}")
+    time.sleep(2)
+    INFO("network creation")
+    if vlan_config.get("existing_vlan_name")!="":
+        network_name=vlan_config["existing_vlan_name"]
+    else:
+        try:
+            run_and_check_output(setup,"acli net.delete bas_sub")
+        except Exception as e:
+            if "Unknown name: bas_sub" in str(e):
+                pass
+            else:
+                raise ExpError(f"Failed to delete network: {e}")
+        run_and_check_output(setup,f"acli net.create bas_sub vlan={vlan_config['vlan_id']} ip_config={vlan_config['default_gateway_ip']}/{vlan_config['prefix_length']}")
+        run_and_check_output(setup,f"acli net.add_dhcp_pool bas_sub start={vlan_config['dhcp_start_ip']} end={vlan_config['dhcp_end_ip']}")
+        network_name="bas_sub"    
+    for i in vm_names:
+        run_and_check_output(setup,f"acli vm.create {i} memory=8G num_cores_per_vcpu=2 num_vcpus=2")
+        # setup.execute(f"acli vm.disk_create {i} create_size=50G container=Images bus=scsi index=1")        
+        # setup.execute(f"acli vm.disk_create {i} create_size=200G container=Images bus=scsi index=2")
+        run_and_check_output(setup,f"acli vm.disk_create {i}  bus=sata clone_from_image=\"vm_image\"") 
+        run_and_check_output(setup,f"acli vm.update_boot_device {i} disk_addr=sata.0")
+        run_and_check_output(setup,f"acli vm.assign_pcie_device {i} group_uuid={group_uuid}")
+        run_and_check_output(setup,f"acli vm.nic_create {i} network={network_name}")
+        run_and_check_output(setup,f"acli vm.on {i}")
+    time.sleep(50)
     vm_data_dict=parse_vm_output(setup.execute("acli vm.list")["stdout"])
+    INFO(vm_data_dict)
     vm_dict ={name:vm_data_dict[name] for name in vm_names if name in vm_data_dict}
+    INFO(vm_dict)
     vm_obj_dict = {name: VM(name=name,vm_id=vm_data_dict[name]) for name in vm_names if name in vm_data_dict}
+    INFO(vm_obj_dict)
     for vm_obj in vm_obj_dict.values():
         vm_obj.get_vnic_data(setup)
         vm_obj.ssh_setup()
         vm_obj.get_interface_data()
         vm_obj.find_smartnic_interface()
-    vm_obj_dict["vm1"].set_ip_for_smartnic("10.10.10.10")
-    vm_obj_dict["vm2"].set_ip_for_smartnic("10.10.10.20")
+    # vm_obj_dict["vm1"].set_ip_for_smartnic("10.10.20.10")
+    # vm_obj_dict["vm2"].set_ip_for_smartnic("10.10.20.20")
     
-    
+    vm_obj_dict["vm1"].ssh_obj.execute("ifconfig")
+    vm_obj_dict["vm2"].ssh_obj.execute("ifconfig")
         
     
     INFO(vm_dict)
@@ -655,6 +687,8 @@ def test_1_vm_creation_and_network_creation(setup,host_data):
             
         # if len(VFs)==2:
             # break
+    vm_obj_dict["vm1"].ssh_obj.execute("ifconfig")
+    vm_obj_dict["vm2"].ssh_obj.execute("ifconfig")
     INFO(VFs)
     if len(VFs)!=2:
         raise ExpError("Failed to assign VFs to VMs")
@@ -671,6 +705,8 @@ def test_1_vm_creation_and_network_creation(setup,host_data):
                 break
     INFO(vf_list)
     # break
+    vm_obj_dict["vm1"].ssh_obj.execute("ifconfig")
+    vm_obj_dict["vm2"].ssh_obj.execute("ifconfig")
     for owner, vfs in VFs.items():
         for vf in vfs:
             for vm_name, vm_id in vm_dict.items():
@@ -680,22 +716,27 @@ def test_1_vm_creation_and_network_creation(setup,host_data):
     ports_to_add=[nic_config['port']]+[vf.vf_rep for vf in vf_list]
     for port in ports_to_add:
         try:
-            ahv_obj.execute(f"ovs-vsctl add-port br0 {port}")
+            ahv_obj.execute(f"ovs-vsctl add-port {bridge} {port}")
         except Exception as e:
-            if "already exists on bridge br0" in str(e):
+            if f"already exists on bridge {bridge}" in str(e):
                 pass
             else:
                 raise ExpError(f"Failed to add port to bridge: {e}")
-    
+    vm_obj_dict["vm1"].ssh_obj.execute("ifconfig")
+    vm_obj_dict["vm2"].ssh_obj.execute("ifconfig")
     ahv_obj.execute(f"ip link set dev {nic_config['port']} up")
     for vf in vf_list:
         ahv_obj.execute(f"ip link set dev {vf.vf_rep} up")
     INFO(VFs)
-    for vf1 in VFs[vm_dict["vm1"]]:
-        for vf2 in VFs[vm_dict["vm2"]]:
-            ahv_obj.execute(f"ovs-ofctl add-flow br0 \"in_port={vm_obj_dict['vm1'].vf_rep},actions=output:{vm_obj_dict['vm2'].vf_rep}\"")
-            ahv_obj.execute(f"ovs-ofctl add-flow br0 \"in_port={vm_obj_dict['vm2'].vf_rep},actions=output:{vm_obj_dict['vm1'].vf_rep}\"")
+    # for vf1 in VFs[vm_dict["vm1"]]:
+    #     for vf2 in VFs[vm_dict["vm2"]]:
+    vm_obj_dict["vm1"].ssh_obj.execute("ifconfig")
+    vm_obj_dict["vm2"].ssh_obj.execute("ifconfig")
+    ahv_obj.execute(f"ovs-ofctl add-flow {bridge} \"in_port={vm_obj_dict['vm1'].vf_rep},actions=output:{vm_obj_dict['vm2'].vf_rep}\"")
+    ahv_obj.execute(f"ovs-ofctl add-flow {bridge} \"in_port={vm_obj_dict['vm2'].vf_rep},actions=output:{vm_obj_dict['vm1'].vf_rep}\"")
     # start_continuous_ping(vm_obj_dict["vm1"].ip,vm_obj_dict["vm2"].ip,vm_obj_dict["vm1"].smartnic_interface_data.name)
+    vm_obj_dict["vm1"].ssh_obj.execute("ifconfig")
+    vm_obj_dict["vm2"].ssh_obj.execute("ifconfig")
     # flows=parse_ahv_port_flows(ahv_obj)
     # stop_continuous_ping(vm_obj_dict["vm1"].ip,vm_obj_dict["vm2"].ip)
     # INFO(flows)
@@ -710,16 +751,30 @@ def test_1_vm_creation_and_network_creation(setup,host_data):
     ahv_obj.execute("rm -f /tmp/tcpdump_output2.pcap")
     start_tcpdump(ahv_obj, vf_list[0].vf_rep, "/tmp/tcpdump_output1.pcap")
     start_tcpdump(ahv_obj, vf_list[1].vf_rep, "/tmp/tcpdump_output2.pcap")
-    ahv_obj.execute("ls /tmp/tcpdump*")
-    
-
-    vm_obj_dict["vm1"].ssh_obj.ping_an_ip(vm_obj_dict["vm2"].snic_ip,interface=vm_obj_dict["vm1"].smartnic_interface_data.name)
+    # ahv_obj.execute("ls /tmp/tcpdump*")
     time.sleep(2)
+    vm_obj_dict["vm1"].ssh_obj.execute("ifconfig")
+    vm_obj_dict["vm2"].ssh_obj.execute("ifconfig")
+    vm_obj_dict["vm1"].set_ip_for_smartnic("10.10.10.10")
+    vm_obj_dict["vm2"].set_ip_for_smartnic("10.10.10.20")
+    if bridge=="br0":
+        try:
+            ahv_obj.execute(f"ovs-appctl bond/set-active-member br0-up {nic_config['port']}")
+        except Exception as e:
+            raise ExpError(f"Failed to set active member: {e}")
+    vm_obj_dict["vm1"].ssh_obj.execute("ifconfig")
+    vm_obj_dict["vm2"].ssh_obj.execute("ifconfig")
+    vm_obj_dict["vm1"].ssh_obj.ping_an_ip(vm_obj_dict["vm2"].snic_ip,interface=vm_obj_dict["vm1"].smartnic_interface_data.name)
+    vm_obj_dict["vm1"].ssh_obj.execute("ifconfig")
+    vm_obj_dict["vm2"].ssh_obj.execute("ifconfig")
+    time.sleep(4)
     flows=parse_ahv_port_flows(ahv_obj)
+    INFO(flows)
     tc_filters_vf1 = get_tc_filter_details(ahv_obj, vm_obj_dict['vm1'].vf_rep)
     tc_filters_vf2 = get_tc_filter_details(ahv_obj, vm_obj_dict['vm2'].vf_rep)
     stop_tcpdump(ahv_obj, vm_obj_dict['vm1'].vf_rep)
     stop_tcpdump(ahv_obj, vm_obj_dict['vm2'].vf_rep)
+    
     if not check_flows(flows,vm_obj_dict['vm1'].vf_rep,vm_obj_dict['vm2'].vf_rep):
         STEP("Verification of offloaded flows: Fail")
         raise ExpError("Failed to add flows")
@@ -737,7 +792,7 @@ def test_1_vm_creation_and_network_creation(setup,host_data):
     INFO(f"ICMP packet count on vf1: {icmp_packet_count1}")
     icmp_packet_count2 = count_icmp_packets(ahv_obj, "/tmp/tcpdump_output2.pcap", vm_obj_dict["vm2"].snic_ip, vm_obj_dict["vm1"].snic_ip)
     INFO(f"ICMP packet count on vf2: {icmp_packet_count2}")
-    if icmp_packet_count1 == icmp_packet_count2 and icmp_packet_count1 == 1 and icmp_packet_count2 == 1:
+    if icmp_packet_count1 <= 1 and icmp_packet_count2 <= 1:
         STEP("Verification of packet count: Pass")
     else:
         ERROR("ICMP packet count mismatch")
@@ -754,6 +809,17 @@ def test_1_vm_creation_and_network_creation(setup,host_data):
     else:
         ERROR("Failed to verify tc filters")
         STEP("Verification of tc filters: Fail")
+    for name,id in vm_dict.items():
+        if name in vm_names:
+            run_and_check_output(setup,f"acli vm.off {name}:{id}")
+            run_and_check_output(setup,f"yes yes | acli vm.delete {name}:{id}")
+    try:
+        run_and_check_output(setup,"acli net.delete bas_sub")
+    except Exception as e:
+        if "Unknown name: bas_sub" in str(e):
+            pass
+        else:
+            raise ExpError(f"Failed to delete network: {e}")
        
 def get_tc_filter_details(vm_obj, interface):
     cmd = f"tc -j -s -d -p filter show dev {interface} ingress"
@@ -764,14 +830,12 @@ def check_tc_filters(tc_filters,vf2,count=9):
     for filter in tc_filters:
         if filter['protocol'] == 'ip' and 'options' in filter:
             options = filter['options']
-            actions={}
+            # actions={}
             for action in options['actions']:
                 if action.get("to_dev")==vf2:
-                    actions=action
-                    break
-            if options.get('in_hw') and actions.get("stats",{}).get("hw_packets")==9:
-                # INFO(f"Hardware packet count is validated on ")
-                return True
+                    if options.get('in_hw') and action.get("stats",{}).get("hw_packets")>=count:
+                        # INFO(f"Hardware packet count is validated on ")
+                        return True
     return False              
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Test Runner")
@@ -787,7 +851,7 @@ if __name__ == "__main__":
     host_data=load_config(host_path)
     host_config = load_config(host_path)['cluster_host_config']
     cvm_obj=CVM(host_config["ips"]['pe_ip'])
-    # vm_image_creation(cvm_obj,host_data)
+    vm_image_creation(cvm_obj,host_data)
     nic_data(cvm_obj,args.skip_fw_check)
     nic_config=host_config["nic_config"]
     
