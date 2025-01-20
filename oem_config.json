@@ -1,36 +1,43 @@
 {
-    "cluster_host_config": {
-      "ips": {
-          "pe_ip": "10.15.41.62"
-      },
-      "guest_vm_driver": {
-        "use_driver_default": true,
-        "VF_driver_location": "provide either a tar path or http link",
-        "commands": []
-      },
-      "vm_image": {
-        "use_vm_default": true,
-        "bind": true,
-        "vm_image_location": "http://phx-net-fs.corp.nutanix.com/net-isos/Centos7UVM-2.1.qcow2",
-        "vm_image_name": "vm_image"
-      },
-      "nic_config": {
-        "port": "",
-        "host_ip": "",
-        "nic_family": ""
-      }
+  "cluster_host_config": {
+    "ips": {
+        "pe_ip": "10.15.41.62"
     },
-  
-    "default_config": {
-      "guest_vm_driver": {
-        "VF_driver_location": "provide either a tar path or http link",
-        "commands": []
-      },
-      "vm_image": {
-        "bind": true,
-        "vm_image_location": "data/image/rocky9-perf-v0.qcow2",
-        "vm_image_name": "vm_image"
-      }
+    "guest_vm_driver": {
+      "use_driver_default": true,
+      "VF_driver_location": "provide either a tar path or http link",
+      "commands": []
+    },
+    "vm_image": {
+      "use_vm_default": true,
+      "bind": true,
+      "vm_image_location": "http://phx-net-fs.corp.nutanix.com/net-isos/Centos7UVM-2.1.qcow2",
+      "vm_image_name": "vm_image"
+    },
+    "nic_config": {
+      "port": "eth4",
+      "host_ip": "10.15.41.65",
+      "nic_family": ""
+    },
+    "vlan_config": {
+    "vlan_id": 1117,
+    "ip": "10.19.117.0",
+    "prefix_length": 24,
+    "default_gateway_ip": "10.19.117.1",
+    "dhcp_start_ip":"10.19.117.215",
+    "dhcp_end_ip":"10.19.117.222"
+  }
+  },
+
+  "default_config": {
+    "guest_vm_driver": {
+      "VF_driver_location": "provide either a tar path or http link",
+      "commands": []
+    },
+    "vm_image": {
+      "bind": true,
+      "vm_image_location": "data/image/rocky-9.3.qcow2",
+      "vm_image_name": "vm_image"
     }
   }
-  
+}
