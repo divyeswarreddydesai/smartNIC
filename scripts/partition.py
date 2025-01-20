@@ -251,8 +251,8 @@ def action_partition(args):
       response = requests.patch(f"{HOST_GATEWAY}/host/v1/redfish/v1/Chassis/ahv/PCIeDevices/{device_id}/PCIeFunctions/{function_id}",
               json=payload, cert=cert, verify=False) 
       print(str(response), response.text)
-    #response = requests.post(f"{HOST_GATEWAY}/host/v0/redfish/v1/Chassis/ahv/PCIeDevices/{device_id}/PCIeFunctions/{function_id}/Oem/NTNX/Actions/NTNX_PCIeFunctions.Partition", json={"owner": owner, "label": schema_id}, cert=cert, verify=False)
-    response = requests.post(f"{HOST_GATEWAY}/host/v0/redfish/v1/Chassis/ahv/PCIeDevices/{device_id}/PCIeFunctions/{function_id}/Oem/NTNX/Actions/NTNX_PCIeFunctions.Partition", json={"Owner": owner, "SchemaId": schema_id, "Parameters": {"Symmetric-v1": {"Count": 8}}}, cert=cert, verify=False)
+    #response = requests.post(f"{HOST_GATEWAY}/host/v1/redfish/v1/Chassis/ahv/PCIeDevices/{device_id}/PCIeFunctions/{function_id}/Oem/NTNX/Actions/NTNX_PCIeFunctions.Partition", json={"owner": owner, "label": schema_id}, cert=cert, verify=False)
+    response = requests.post(f"{HOST_GATEWAY}/host/v1/redfish/v1/Chassis/ahv/PCIeDevices/{device_id}/PCIeFunctions/{function_id}/Oem/NTNX/Actions/NTNX_PCIeFunctions.Partition", json={"Owner": owner, "SchemaId": schema_id, "Parameters": {"Symmetric-v1": {"Count": 8}}}, cert=cert, verify=False)
     print(str(response), response.text)
     print("Done with partition")
     time.sleep(5)
@@ -302,7 +302,7 @@ def action_unpartition(args):
             payload = {"Oem": {"NTNX": {"State": "Host.Unused"}}}
             response = requests.patch(f"{HOST_GATEWAY}/host/v1/redfish/v1/Chassis/ahv/PCIeDevices/{vf_device_id}/PCIeFunctions/{vf_function_id}",
               json=payload, cert=cert, verify=False) 
-    response = requests.post(f"{HOST_GATEWAY}/host/v0/redfish/v1/Chassis/ahv/PCIeDevices/{device_id}/PCIeFunctions/{function_id}/Oem/NTNX/Actions/NTNX_PCIeFunctions.Unpartition", json={"Owner": owner, "SchemaId" :schema_id}, cert=cert, verify=False)
+    response = requests.post(f"{HOST_GATEWAY}/host/v1/redfish/v1/Chassis/ahv/PCIeDevices/{device_id}/PCIeFunctions/{function_id}/Oem/NTNX/Actions/NTNX_PCIeFunctions.Unpartition", json={"Owner": owner, "SchemaId" :schema_id}, cert=cert, verify=False)
     print(str(response), response.text)
     for _ in range(10):
       time.sleep(5)

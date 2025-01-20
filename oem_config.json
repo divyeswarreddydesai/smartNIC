@@ -1,0 +1,36 @@
+{
+    "cluster_host_config": {
+      "ips": {
+          "pe_ip": "10.15.41.62"
+      },
+      "guest_vm_driver": {
+        "use_driver_default": true,
+        "VF_driver_location": "provide either a tar path or http link",
+        "commands": []
+      },
+      "vm_image": {
+        "use_vm_default": true,
+        "bind": true,
+        "vm_image_location": "http://phx-net-fs.corp.nutanix.com/net-isos/Centos7UVM-2.1.qcow2",
+        "vm_image_name": "vm_image"
+      },
+      "nic_config": {
+        "port": "",
+        "host_ip": "",
+        "nic_family": ""
+      }
+    },
+  
+    "default_config": {
+      "guest_vm_driver": {
+        "VF_driver_location": "provide either a tar path or http link",
+        "commands": []
+      },
+      "vm_image": {
+        "bind": true,
+        "vm_image_location": "data/image/rocky9-perf-v0.qcow2",
+        "vm_image_name": "vm_image"
+      }
+    }
+  }
+  
