@@ -518,8 +518,8 @@ class VM:
         # INFO(json_data["spec"])
         # INFO(json_data["spec"]["resources"])
         nic_list=json_data.get("status",{}).get("resources",{}).get("nic_list")
-        if nic_list:
-            self.fill_nic_data(nic_list[0])
+        if nic_list:    
+            [self.fill_nic_data(i) for i in nic_list]
         else:
             raise ExpError("No NIC data found")
         # self.fill_nic_data(res['stdout'])
@@ -541,14 +541,20 @@ class VM:
         )
         self.add_nic(nic)
     def ssh_setup(self,username="root",password="nutanix/4u"):
-       for nic in self.nic_data:
+        for nic in self.nic_data:
             try:
+                response = subprocess.run(['ping', '-c', '1', nic.ip_address], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+                if response.returncode != 0:
+                    continue
+
                 # Attempt to establish a connection using the NIC's IP address
                 self.ssh_obj=LinuxOperatingSystem(nic.ip_address, username, password)
                 INFO(f"Successfully connected to vm {self.name} at {nic.ip_address}")
                 self.ip=nic.ip_address
+                return
             except Exception as e:
                 raise ExpError(f"Failed to establish connection to NIC {nic.nic_uuid} at {nic.ip_address}: {e}")
+        raise ExpError(f"Failed to establish connection to any NIC of VM {self.name}")
     def get_interface_data(self):
         res = self.ssh_obj.execute("ip -j address")
         self.parse_ip_output(res["stdout"])
@@ -728,6 +734,9 @@ def test_traffic(setup,host_data,skip_deletion_of_setup=False):
     res=cvm_obj.execute(f"/home/nutanix/tmp/partition.py show {nic_config['host_ip']} {nic_config['port']}")
     # INFO(res)
     nic_vf_data=read_nic_data(res["stdout"])
+    
+    # for i in vm_names:
+        
     VFs={}
     if(len(nic_vf_data['Virtual Functions'])==0):
         raise ExpError("No Virtual Functions found")
