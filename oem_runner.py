@@ -528,23 +528,26 @@ class VM:
     def fill_nic_data(self, nic_data):
         nic_uuid = nic_data['uuid']
         mac_address = nic_data['mac_address']
-        ip_address = nic_data['ip_endpoint_list'][0]['ip'] if nic_data['ip_endpoint_list'] else None
+        # ip_address = nic_data['ip_endpoint_list'][0]['ip'] if nic_data['ip_endpoint_list'] else None
         network_uuid = nic_data['subnet_reference']['uuid']
         network_name = nic_data['subnet_reference']['name']
-        
-        nic = NIC(
-            nic_uuid=nic_uuid,
-            mac_address=mac_address,
-            ip_address=ip_address,
-            network_uuid=network_uuid,
-            network_name=network_name
-        )
-        self.add_nic(nic)
+        for ip in nic_data['ip_endpoint_list']:
+            nic = NIC(
+                nic_uuid=nic_uuid,
+                mac_address=mac_address,
+                ip_address=ip['ip'],
+                network_uuid=network_uuid,
+                network_name=network_name
+            )
+            self.add_nic(nic)
     def ssh_setup(self,username="root",password="nutanix/4u"):
         for nic in self.nic_data:
             try:
+                # response = subprocess.run(['ping', '-c', '1', nic.ip_address], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
                 response = subprocess.run(['ping', '-c', '1', nic.ip_address], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-                if response.returncode != 0:
+                stdout = response.stdout.decode('utf-8')
+                if "100% packet loss" in stdout:
+                    INFO(response)
                     continue
 
                 # Attempt to establish a connection using the NIC's IP address
@@ -700,7 +703,7 @@ def vm_creation_and_network_creation(setup,host_data):
         run_and_check_output(setup,f"acli vm.nic_create {i} network={network_name}")
         run_and_check_output(setup,f"acli vm.on {i}")
     INFO("waiting for IPs to be assigned")
-    time.sleep(50)
+    time.sleep(60)
 def test_traffic(setup,host_data,skip_deletion_of_setup=False):
     nic_config=host_data["nic_config"]
     vlan_config=host_data["vlan_config"]
