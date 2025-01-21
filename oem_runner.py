@@ -552,9 +552,11 @@ class VM:
     def get_interface_data(self):
         res = self.ssh_obj.execute("ip -j address")
         self.parse_ip_output(res["stdout"])
-    def set_ip_for_smartnic(self,ip):
+    def set_ip_for_smartnic(self,ip,route):
         self.snic_ip=ip
-        self.ssh_obj.execute(f"ifconfig {self.smartnic_interface_data.name} {ip}/24")
+        self.ssh_obj.execute(f"ifconfig {self.smartnic_interface_data.name} {ip}/24 up")
+        self.ssh_obj.execute(f"ip route add {route}/24 dev {self.smartnic_interface_data.name}")
+        
     def parse_ip_output(self, ip_output):
         interfaces = []
         data = json.loads(ip_output)
@@ -582,7 +584,7 @@ class VM:
     def find_smartnic_interface(self):
         nic_ips = {nic.ip_address for nic in self.nic_data}
         for iface in self.interface_data:
-            if iface.ipv4_address not in nic_ips:
+            if "mlx" in self.ssh_obj.execute(f"ethtool -i {iface.name}")["stdout"]:
                 self.smartnic_interface_data = iface
                 INFO(f"SmartNIC interface found: {iface}")
                 return iface
@@ -807,8 +809,8 @@ def test_traffic(setup,host_data,skip_deletion_of_setup=False):
     time.sleep(2)
     # vm_obj_dict["vm1"].ssh_obj.execute("ifconfig")
     # vm_obj_dict["vm2"].ssh_obj.execute("ifconfig")
-    vm_obj_dict["vm1"].set_ip_for_smartnic("10.10.10.10")
-    vm_obj_dict["vm2"].set_ip_for_smartnic("10.10.10.20")
+    vm_obj_dict["vm1"].set_ip_for_smartnic("192.168.1.10","192.168.1.0")
+    vm_obj_dict["vm2"].set_ip_for_smartnic("192.168.1.20","192.168.1.0")
     if bridge=="br0":
         try:
             ahv_obj.execute(f"ovs-appctl bond/set-active-member br0-up {nic_config['port']}")
@@ -821,6 +823,7 @@ def test_traffic(setup,host_data,skip_deletion_of_setup=False):
     
     vm_obj_dict["vm1"].ssh_obj.execute("ifconfig")
     vm_obj_dict["vm2"].ssh_obj.execute("ifconfig")
+    # import pdb;pdb.set_trace()
     vm_obj_dict["vm1"].ssh_obj.ping_an_ip(vm_obj_dict["vm2"].snic_ip,interface=vm_obj_dict["vm1"].smartnic_interface_data.name)
     # vm_obj_dict["vm1"].ssh_obj.execute("ifconfig")
     # vm_obj_dict["vm2"].ssh_obj.execute("ifconfig")
