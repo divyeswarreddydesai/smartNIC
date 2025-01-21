@@ -80,6 +80,7 @@ class SSHClient:
                 print("Connection established successfully.")
                 return
             except paramiko.AuthenticationException as e:
+                INFO(self.ip)
                 ERROR("Authentication Error. Credentials Used : %s,%s" % (self.username, self.password))
                 raise ExpError('Authentication Error. %s' % str(e))
             except socket.timeout as e:
@@ -114,8 +115,8 @@ class SSHClient:
         if run_as_root:
             cmd = f"sudo {cmd}"
 
-        if disable_safe_rm:
-            cmd = cmd.replace("rm", "rm -f")
+        # if disable_safe_rm:
+        #     cmd = cmd.replace("rm ", " rm -f ")
 
         for attempt in range(retries):
             try:
@@ -153,10 +154,16 @@ class SSHClient:
 
             except paramiko.SSHException as e:
                 ERROR(f"SSHException: {e}")
+                if(attempt==int(retries/2)):
+                    self.close()
+                    self.connect()
                 if attempt + 1 == retries:
                     raise ExpError(f"Failed to execute command after {retries} attempts: {e}")
                 # time.sleep(conn_acquire_timeout )  # Wait before retrying
             except Exception as e:
+                if(attempt==int(retries/2)):
+                    self.close()
+                    self.connect()
                 ERROR(f"Exception: {traceback.format_exc()}")
                 if attempt + 1 == retries:
                     raise ExpError(f"Failed to execute command after {retries} attempts: {e}")
