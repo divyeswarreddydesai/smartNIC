@@ -76,8 +76,7 @@ def nic_data(setup_obj,skip_driver):
         # ent_mngr=self.setup_obj.get_entity_manager()
         # ent_mngr.create_entities(self.class_args)
         file_path=os.path.join(os.environ.get('PYTHONPATH'),"scripts","partition.py")
-        for ip,cvm in setup_obj.cvm_obj_dict.items():
-            INFO(ip)
+        for cvm in setup_obj.cvm_obj_dict.values():
             try:
                 # self.setup_obj.cvm.execute("mkdir -p /home/nutanix/scripts")
                 cvm.transfer_to(file_path, "/home/nutanix/tmp")
@@ -89,6 +88,9 @@ def nic_data(setup_obj,skip_driver):
                 INFO("File permission changed successfully.")
             except Exception as e:
                 raise ExpError(f"Failed to change file permission: {e}")
+        for ip,cvm in setup_obj.cvm_obj_dict.items():
+            
+            
             for i in setup_obj.AHV_ip_list:
                 # try:
                 #     cvm.execute("/home/nutanix/tmp/partition.py setup {0}".format(i))
@@ -371,57 +373,99 @@ def vm_image_creation(setup,host_data):
         image_path=os.path.join(os.environ.get('PYTHONPATH'),vm_image_details['vm_image_location'])
     else:
         image_path=vm_image_details['vm_image_location']
-    if not os.path.isfile(image_path):
-        raise ExpError(f"File {image_path} does not exist.")
+    if "http" not in image_path:
+        
+        if not os.path.isfile(image_path):
+            raise ExpError(f"File {image_path} does not exist.")
     # setup.pcvm.transfer_to(image_path, "/home/nutanix")
     # ahv_ip=setup.AHV_ip_list[0]
     new_ssh=LinuxOperatingSystem(setup.ip,username=CVM_USER, password=CVM_PASSWORD)
-    for cvm in setup.cvm_obj_dict.values():
-        cvm.execute("echo \"--ndfs_allow_blacklisted_ips=true\" > /home/nutanix/config/acropolis.gflags")
-    for cvm in setup.cvm_obj_dict.values():
-        cvm.execute("genesis stop acropolis;cluster start")
+    
     new_ssh.execute("cd /home/nutanix")
     remote_image_path = f"/home/nutanix/{os.path.basename(image_path)}"
     file_exists = new_ssh.execute(f"test -f {remote_image_path} && echo 'exists' || echo 'not exists'")['stdout'].strip()
+    res=new_ssh.execute("acli image.list")
+    INFO(res)
+    image_present=False
+    if vm_image_details.get('vm_image_name') in res['stdout']:
+        image_present=True
+    if image_present and not vm_image_details.get('bind',False):
+        try:
+            res=setup.execute("yes yes | acli image.delete vm_image*")
+            image_present=False
+        except Exception as e:
+            if "Unknown name" in e:
+                pass
+            else:
+                ERROR(f"Failed to delete image: {e}")
+        
+        
     port = 8001
     image_name = os.path.basename(image_path)
-    if file_exists == 'not exists':
-        new_ssh.transfer_to(image_path, "/home/nutanix")    
-        while port <8005:
-                new_ssh.execute(f"yes | modify_firewall - open -i eth0 -p {port} -a")
-                resp = new_ssh.execute(f"python3 -m http.server {port} > output.log 2>&1",background=True)
-                INFO(resp)
-                # pid = new_ssh.execute(f"cat /tmp/http_server_{port}.pid")
-                INFO(f"HTTP server started on port {port}.")
-                vm_args={
+    if  not image_present:
+        if "http://" in image_path:
+            vm_args={
                     
                         "name": vm_image_details['vm_image_name'],
                         "bind": vm_image_details.get('bind',False),
-                        "source_uri": f'http://{setup.ip}:{port}/{image_name}',
+                        "source_uri": image_path,
                     
                 }
-                container_names=extract_names(setup.execute("ncli ctr list")["stdout"])
-                def_container = next((name for name in container_names if name.startswith("default")), None)
-
-                if def_container is None:
-                    raise ExpError("No container starting with 'default' found.")
-                def_container = def_container.strip()
-                INFO(f"Default container: {def_container}")
-                try:
-                    
-                    res=setup.execute(f"acli image.create {vm_args['name']} source_url={vm_args['source_uri']} image_type=kDiskImage container={def_container}")
-                    INFO(res)
-                    break
-                except Exception as e:
-                    ERROR(f"Failed to create image: {e}")
+            res=image_creation(new_ssh,vm_args)
+            if not res:
+                raise ExpError("Failed to create image")
+        else:
+            
+            if file_exists == 'not exists':
+                new_ssh.transfer_to(image_path, "/home/nutanix")    
+            for cvm in setup.cvm_obj_dict.values():
+                cvm.execute("echo \"--ndfs_allow_blacklisted_ips=true\" > /home/nutanix/config/acropolis.gflags")
+            for cvm in setup.cvm_obj_dict.values():
+                cvm.execute("genesis stop acropolis;cluster start")
+            while port <8005:
+                    new_ssh.execute(f"yes | modify_firewall - open -i eth0 -p {port} -a")
+                    resp = new_ssh.execute(f"python3 -m http.server {port} > output.log 2>&1",background=True)
+                    INFO(resp)
+                    # pid = new_ssh.execute(f"cat /tmp/http_server_{port}.pid")
+                    INFO(f"HTTP server started on port {port}.")
+                    vm_args={
+                        
+                            "name": vm_image_details['vm_image_name'],
+                            "bind": vm_image_details.get('bind',False),
+                            "source_uri": f'http://{setup.ip}:{port}/{image_name}',
+                        
+                    }
+                    res=image_creation(new_ssh,vm_args)
+                    if res:
+                        break
+                    port += 1
     try:
         new_ssh.execute("fuser -k 8000/tcp")
     except Exception as e:
         # Ignore the error and continue
         pass
+def image_creation(setup,vm_args):
+    container_names=extract_names(setup.execute("ncli ctr list")["stdout"])
+    def_container = next((name for name in container_names if name.startswith("default")), None)
+
+    if def_container is None:
+        raise ExpError("No container starting with 'default' found.")
+    def_container = def_container.strip()
+    INFO(f"Default container: {def_container}")
+    
+    
+    try:
+        
+        res=setup.execute(f"acli image.create {vm_args['name']} source_url={vm_args['source_uri']} image_type=kDiskImage container={def_container}")
+        INFO(res)
+        return True
+    except Exception as e:
+        ERROR(f"Failed to create image: {e}")
+        return False
+    
 def run_and_check_output(setup,cmd):
     res=setup.execute(cmd)
-    INFO(res)   
+    # INFO(res)   
     # INFO(res['status']!=0)
     if res['status']!=0:
         raise ExpError(f"Failed to run command {cmd}")
@@ -560,7 +604,7 @@ def start_iperf_test(vm_obj_1,vm_obj_2,udp):
         ERROR(f"Failed to stop iperf server: {e}")
     vm_obj_2.ssh_obj.start_iperf_server(udp)
     result = vm_obj_1.ssh_obj.run_iperf_client(vm_obj_2.ip,udp)
-    
+    INFO(result)
     # Display the results
     print(f"iperf test results from {vm_obj_1.ip} to {vm_obj_2.ip}:\n{result}")
     return result
@@ -572,7 +616,7 @@ def extract_names(log_content):
     names = name_pattern.findall(log_content)
     
     return names
-def test_1_vm_creation_and_network_creation(setup,host_data):
+def vm_creation_and_network_creation(setup,host_data):
     # config=host_data['cluster_host_config']
     # def_config=host_data['default_config']
     nic_config=host_data["nic_config"]
@@ -647,7 +691,15 @@ def test_1_vm_creation_and_network_creation(setup,host_data):
         run_and_check_output(setup,f"acli vm.assign_pcie_device {i} group_uuid={group_uuid}")
         run_and_check_output(setup,f"acli vm.nic_create {i} network={network_name}")
         run_and_check_output(setup,f"acli vm.on {i}")
+    INFO("waiting for IPs to be assigned")
     time.sleep(50)
+def test_traffic(setup,host_data,skip_deletion_of_setup=False):
+    nic_config=host_data["nic_config"]
+    vlan_config=host_data["vlan_config"]
+    nic_vf_data=None
+    bridge=nic_config.get("bridge",False)
+    ahv_obj=setup.AHV_obj_dict[nic_config['host_ip']]
+    vm_names=["vm1","vm2"]
     vm_data_dict=parse_vm_output(setup.execute("acli vm.list")["stdout"])
     INFO(vm_data_dict)
     vm_dict ={name:vm_data_dict[name] for name in vm_names if name in vm_data_dict}
@@ -662,8 +714,8 @@ def test_1_vm_creation_and_network_creation(setup,host_data):
     # vm_obj_dict["vm1"].set_ip_for_smartnic("10.10.20.10")
     # vm_obj_dict["vm2"].set_ip_for_smartnic("10.10.20.20")
     
-    vm_obj_dict["vm1"].ssh_obj.execute("ifconfig")
-    vm_obj_dict["vm2"].ssh_obj.execute("ifconfig")
+    # vm_obj_dict["vm1"].ssh_obj.execute("ifconfig")
+    # vm_obj_dict["vm2"].ssh_obj.execute("ifconfig")
         
     
     INFO(vm_dict)
@@ -687,8 +739,8 @@ def test_1_vm_creation_and_network_creation(setup,host_data):
             
         # if len(VFs)==2:
             # break
-    vm_obj_dict["vm1"].ssh_obj.execute("ifconfig")
-    vm_obj_dict["vm2"].ssh_obj.execute("ifconfig")
+    # vm_obj_dict["vm1"].ssh_obj.execute("ifconfig")
+    # vm_obj_dict["vm2"].ssh_obj.execute("ifconfig")
     INFO(VFs)
     if len(VFs)!=2:
         raise ExpError("Failed to assign VFs to VMs")
@@ -705,8 +757,8 @@ def test_1_vm_creation_and_network_creation(setup,host_data):
                 break
     INFO(vf_list)
     # break
-    vm_obj_dict["vm1"].ssh_obj.execute("ifconfig")
-    vm_obj_dict["vm2"].ssh_obj.execute("ifconfig")
+    # vm_obj_dict["vm1"].ssh_obj.execute("ifconfig")
+    # vm_obj_dict["vm2"].ssh_obj.execute("ifconfig")
     for owner, vfs in VFs.items():
         for vf in vfs:
             for vm_name, vm_id in vm_dict.items():
@@ -722,21 +774,21 @@ def test_1_vm_creation_and_network_creation(setup,host_data):
                 pass
             else:
                 raise ExpError(f"Failed to add port to bridge: {e}")
-    vm_obj_dict["vm1"].ssh_obj.execute("ifconfig")
-    vm_obj_dict["vm2"].ssh_obj.execute("ifconfig")
+    # vm_obj_dict["vm1"].ssh_obj.execute("ifconfig")
+    # vm_obj_dict["vm2"].ssh_obj.execute("ifconfig")
     ahv_obj.execute(f"ip link set dev {nic_config['port']} up")
     for vf in vf_list:
         ahv_obj.execute(f"ip link set dev {vf.vf_rep} up")
     INFO(VFs)
     # for vf1 in VFs[vm_dict["vm1"]]:
     #     for vf2 in VFs[vm_dict["vm2"]]:
-    vm_obj_dict["vm1"].ssh_obj.execute("ifconfig")
-    vm_obj_dict["vm2"].ssh_obj.execute("ifconfig")
+    # vm_obj_dict["vm1"].ssh_obj.execute("ifconfig")
+    # vm_obj_dict["vm2"].ssh_obj.execute("ifconfig")
     ahv_obj.execute(f"ovs-ofctl add-flow {bridge} \"in_port={vm_obj_dict['vm1'].vf_rep},actions=output:{vm_obj_dict['vm2'].vf_rep}\"")
     ahv_obj.execute(f"ovs-ofctl add-flow {bridge} \"in_port={vm_obj_dict['vm2'].vf_rep},actions=output:{vm_obj_dict['vm1'].vf_rep}\"")
     # start_continuous_ping(vm_obj_dict["vm1"].ip,vm_obj_dict["vm2"].ip,vm_obj_dict["vm1"].smartnic_interface_data.name)
-    vm_obj_dict["vm1"].ssh_obj.execute("ifconfig")
-    vm_obj_dict["vm2"].ssh_obj.execute("ifconfig")
+    # vm_obj_dict["vm1"].ssh_obj.execute("ifconfig")
+    # vm_obj_dict["vm2"].ssh_obj.execute("ifconfig")
     # flows=parse_ahv_port_flows(ahv_obj)
     # stop_continuous_ping(vm_obj_dict["vm1"].ip,vm_obj_dict["vm2"].ip)
     # INFO(flows)
@@ -753,8 +805,8 @@ def test_1_vm_creation_and_network_creation(setup,host_data):
     start_tcpdump(ahv_obj, vf_list[1].vf_rep, "/tmp/tcpdump_output2.pcap")
     # ahv_obj.execute("ls /tmp/tcpdump*")
     time.sleep(2)
-    vm_obj_dict["vm1"].ssh_obj.execute("ifconfig")
-    vm_obj_dict["vm2"].ssh_obj.execute("ifconfig")
+    # vm_obj_dict["vm1"].ssh_obj.execute("ifconfig")
+    # vm_obj_dict["vm2"].ssh_obj.execute("ifconfig")
     vm_obj_dict["vm1"].set_ip_for_smartnic("10.10.10.10")
     vm_obj_dict["vm2"].set_ip_for_smartnic("10.10.10.20")
     if bridge=="br0":
@@ -762,11 +814,16 @@ def test_1_vm_creation_and_network_creation(setup,host_data):
             ahv_obj.execute(f"ovs-appctl bond/set-active-member br0-up {nic_config['port']}")
         except Exception as e:
             raise ExpError(f"Failed to set active member: {e}")
+    # ahv_obj.execute(f"tc qdisc del dev {vm_obj_dict['vm1'].vf_rep} ingress")
+    # ahv_obj.execute(f"tc qdisc del dev {vm_obj_dict['vm2'].vf_rep} ingress")
+    # ahv_obj.execute(f"tc qdisc add dev {vm_obj_dict['vm1'].vf_rep} clsact")
+    # ahv_obj.execute(f"tc qdisc add dev {vm_obj_dict['vm2'].vf_rep} clsact")
+    
     vm_obj_dict["vm1"].ssh_obj.execute("ifconfig")
     vm_obj_dict["vm2"].ssh_obj.execute("ifconfig")
     vm_obj_dict["vm1"].ssh_obj.ping_an_ip(vm_obj_dict["vm2"].snic_ip,interface=vm_obj_dict["vm1"].smartnic_interface_data.name)
-    vm_obj_dict["vm1"].ssh_obj.execute("ifconfig")
-    vm_obj_dict["vm2"].ssh_obj.execute("ifconfig")
+    # vm_obj_dict["vm1"].ssh_obj.execute("ifconfig")
+    # vm_obj_dict["vm2"].ssh_obj.execute("ifconfig")
     time.sleep(4)
     flows=parse_ahv_port_flows(ahv_obj)
     INFO(flows)
@@ -803,23 +860,26 @@ def test_1_vm_creation_and_network_creation(setup,host_data):
     INFO("iperf test")
     result=parse_iperf_output(start_iperf_test(vm_obj_dict["vm1"],vm_obj_dict["vm2"],udp=False))
     INFO(result)
+    result=parse_iperf_output(start_iperf_test(vm_obj_dict["vm1"],vm_obj_dict["vm2"],udp=True))
+    INFO(result)
     STEP("Verification of iperf test: Pass")
     if check_tc_filters(tc_filters_vf1,vm_obj_dict['vm2'].vf_rep) and check_tc_filters(tc_filters_vf2,vm_obj_dict['vm1'].vf_rep):
         STEP("Verification of tc filters: Pass")
     else:
         ERROR("Failed to verify tc filters")
         STEP("Verification of tc filters: Fail")
-    for name,id in vm_dict.items():
-        if name in vm_names:
-            run_and_check_output(setup,f"acli vm.off {name}:{id}")
-            run_and_check_output(setup,f"yes yes | acli vm.delete {name}:{id}")
-    try:
-        run_and_check_output(setup,"acli net.delete bas_sub")
-    except Exception as e:
-        if "Unknown name: bas_sub" in str(e):
-            pass
-        else:
-            raise ExpError(f"Failed to delete network: {e}")
+    if not skip_deletion_of_setup:
+        for name,id in vm_dict.items():
+            if name in vm_names:
+                run_and_check_output(setup,f"acli vm.off {name}:{id}")
+                run_and_check_output(setup,f"yes yes | acli vm.delete {name}:{id}")
+        try:
+            run_and_check_output(setup,"acli net.delete bas_sub")
+        except Exception as e:
+            if "Unknown name: bas_sub" in str(e):
+                pass
+            else:
+                raise ExpError(f"Failed to delete network: {e}")
        
 def get_tc_filter_details(vm_obj, interface):
     cmd = f"tc -j -s -d -p filter show dev {interface} ingress"
@@ -843,6 +903,8 @@ if __name__ == "__main__":
     parser.add_argument("--debug", action="store_true", help="Enable debug mode",default=False)
     parser.add_argument("--vfdriver", action="store_true", help="Install Guest VF driver",default=False)
     parser.add_argument("--skip_fw_check", action="store_false", help="Skip firmware and driver version check",default=False)
+    parser.add_argument("--skip_setup",action="store_true",help="skip setup creation",default=False)
+    parser.add_argument("--skip_teardown",action="store_true",help="skip setup deletion",default=False)
     args = parser.parse_args()
     if args.debug:
         setup_logger(True)
@@ -854,6 +916,6 @@ if __name__ == "__main__":
     vm_image_creation(cvm_obj,host_data)
     nic_data(cvm_obj,args.skip_fw_check)
     nic_config=host_config["nic_config"]
-    
-    test_1_vm_creation_and_network_creation(cvm_obj,host_config)
-    
+    if not args.skip_setup:
+        vm_creation_and_network_creation(cvm_obj,host_config)
+    test_traffic(cvm_obj,host_config,args.skip_teardown)    

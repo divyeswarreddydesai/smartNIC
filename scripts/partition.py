@@ -7,15 +7,15 @@
 #
 import json
 import requests
-from urllib3.exceptions import InsecureRequestWarning
+from requests.packages.urllib3.exceptions import InsecureRequestWarning
 import argparse
 import subprocess
 import sys
 import time
-from requests.exceptions import HTTPError, RequestException
 
 requests.packages.urllib3.disable_warnings(InsecureRequestWarning)
-PARTITIONING_OWNER = "1deddf7f-ae01-4cf2-9b0d-1d9772942f9b"
+PARTITIONING_OWNER = None 
+#PARTITIONING_OWNER = "1deddf7f-ae01-4cf2-9b0d-1d9772942f9b"
 HOST_GATEWAY=""
 #List of qualified PF(VendorId,DeviceId) to VF(VendorId,DeviceId) mapping
 #ConnectX-6, ConnectX-6 Dx,ConnectX-6 Lx,BlueField-2 with cx6,E810-C
@@ -24,6 +24,7 @@ QUALIFIED_PFS={
                ('15b3','101d'):('101e',''),
                ('15b3','101f'):('101e',''),
                ('15b3','a2d6'):('101e',''),
+               ('15b3','1021'):('101e',''),
                ('8086','1592'):('1889','0000'),
              }
 cert = ("/home/certs/AcropolisService/AcropolisService.crt", "/home/certs/AcropolisService/AcropolisService.key")
@@ -93,7 +94,6 @@ def find_pf_vfs_from_sbdf(args):
     return (pf, vfs)
 
 def print_function_info(header, pf):
-  #  print(pf)
    print(f"""
 {header}:
    Id: {pf['Id']}
@@ -107,7 +107,7 @@ def print_function_info(header, pf):
        #print(pf['Oem']['NTNX'])
        if pf['Oem']['NTNX'].get('Network', None):
         print(f"   Network Id: {pf['Oem']['NTNX']['Network'].get('Id',None)}")  
-       if pf['Oem']['NTNX'].get("Partitioning", None) is None:
+       if not pf['Oem']['NTNX'].get('Partitioning', None):
          print("\t Partitioning Schema not found")
          return
        if pf['Oem']['NTNX']['Partitioning']['Pf'].get('ActiveSchema',None):
@@ -182,7 +182,8 @@ def action_setup(args):
                          "subsystem_id": f"0x{nic['SDevice']}",
                          "UVM_assignable": 'true',
                          "partitioning_schema_templates": [
-                               "mlx_symmetric_sriov"
+                               "mlx_symmetric_sriov",
+                               "mlx_symmetric_dp_offload"
                           ]
                         }
            
@@ -239,7 +240,9 @@ def action_partition(args):
 
     #print(f"Got Partitioning json: {pf['Oem']['NTNX']['Partitioning']}")
     schema_id = pf['Oem']['NTNX']['Partitioning']['Pf']['SupportedSchemas'][0]['Id']
-    owner = pf['Oem']['NTNX'].get('Owner', PARTITIONING_OWNER)
+    owner = pf['Oem']['NTNX'].get('Owner', None)
+    if not owner:
+       sys.exit("Error: Empty Owner") 
 
     print(f"Got Schema Id: {schema_id}, with owner: {owner}")
     if pf['Oem']['NTNX']['State'] == 'Host.Partitioned':
@@ -270,7 +273,9 @@ def action_unpartition(args):
     pf,vfs = find_pf_vfs_from_sbdf(args)
     device_id = pf['@odata.id'].split('/')[-3]
     function_id = pf['Id']
-    owner = pf['Oem']['NTNX'].get('Owner', PARTITIONING_OWNER)
+    owner = pf['Oem']['NTNX'].get('Owner', None)
+    if not owner:
+     sys.exit("Empty owner")
     print("Got owner:"+owner)
     """
     if True:
@@ -297,7 +302,7 @@ def action_unpartition(args):
          elif vf['Oem']['NTNX']['State'] != 'Host.Unused':
             vf_function_id = vf['Id'] 
             vf_device_id = vf['@odata.id'].split('/')[-3]
-            print(f"VF state is not in Unused state so moving to Unused state, {vf_device_id}/{vf_function_id}")
+            print(f"VF state is in {vf['Oem']['NTNX']['State']} state so moving to Unused state, {vf_device_id}/{vf_function_id}")
             #payload = {"Oem": {"NTNX": {"State": "Host.Unused", "Owner": owner }}}
             payload = {"Oem": {"NTNX": {"State": "Host.Unused"}}}
             response = requests.patch(f"{HOST_GATEWAY}/host/v1/redfish/v1/Chassis/ahv/PCIeDevices/{vf_device_id}/PCIeFunctions/{vf_function_id}",
@@ -307,7 +312,10 @@ def action_unpartition(args):
     for _ in range(10):
       time.sleep(5)
       pf,vfs = find_pf_vfs_from_sbdf(args)
-      print("Trying to change PF state, current state:", pf['Oem']['NTNX']['State'])
+      print("Waiting for PF state change, current state:", pf['Oem']['NTNX']['State'])
+      if pf['Oem']['NTNX']['State'] not in ('Host.Partitioning', 'Host.Partitioned'):
+        break
+      """
       if pf['Oem']['NTNX']['State'] == "Host.Used":
         print("PF state is in Used state so moving to Unused state")
         payload = {"Oem": {"NTNX": {"State": "Host.Unused", "Owner": owner }}}
@@ -315,6 +323,7 @@ def action_unpartition(args):
               json=payload, cert=cert, verify=False) 
         print(str(response), response.text)
         break
+      """  
     if pf['Oem']['NTNX'].get('Network', None):
        network_id = pf['Oem']['NTNX']['Network'].get('Id',None) 
        if network_id:
@@ -323,6 +332,65 @@ def action_unpartition(args):
          response = requests.patch(f"{HOST_GATEWAY}/host/v1/redfish/v1/Chassis/ahv/PCIeDevices/{device_id}/PCIeFunctions/{function_id}",
               json=payload, cert=cert, verify=False) 
          print(str(response), response.text)
+
+def action_clean_vf_state(args):
+    pf,vfs = find_pf_vfs_from_sbdf(args)
+    device_id = pf['@odata.id'].split('/')[-3]
+    function_id = pf['Id']
+    owner = pf['Oem']['NTNX'].get('Owner', None)
+    if not owner:
+       sys.exit("Error: Empty Owner")
+    print("Got owner:"+owner)
+
+    vm_list = subprocess.run("acli vm.list", shell=True,capture_output=True, text=True).stdout.splitlines()[1:]
+    vm_uuids = [vm.split()[-1] for vm in vm_list]
+    if pf['Oem']['NTNX']['State'] != 'Host.Partitioned':
+      print_function_info(f"Error: {args.interface} is not in partition state", pf)
+      sys.exit("Please check the configuration and retry.")
+
+    schema_id = pf['Oem']['NTNX']['Partitioning']['Pf']['ActiveSchema']['Id']
+    for vf in vfs:
+       if (vf['Oem']['NTNX']['Partitioning']['Vf']['ParentId'] == pf['Id']):
+         vm_uuid = vf['Oem']['NTNX'].get('Owner',None)  
+         if (vm_uuid != None ):
+            if vm_uuid not in vm_uuids:
+              print(f"VF is marked for {vm_uuid} assosiation but this VM doesn't exist")
+            print_function_info(f"Error: One of the virtual function is in use", vf)
+            sys.exit("Power off all the assosiate VMs of {args.interface} before unpartition.")
+         elif vf['Oem']['NTNX']['State'] != 'Host.Unused':
+            vf_function_id = vf['Id'] 
+            vf_device_id = vf['@odata.id'].split('/')[-3]
+            print(f"VF state is in {vf['Oem']['NTNX']['State']} state so moving to Unused state, {vf_device_id}/{vf_function_id}")
+            #payload = {"Oem": {"NTNX": {"State": "Host.Unused", "Owner": owner }}}
+            payload = {"Oem": {"NTNX": {"State": "Host.Unused"}}}
+            response = requests.patch(f"{HOST_GATEWAY}/host/v1/redfish/v1/Chassis/ahv/PCIeDevices/{vf_device_id}/PCIeFunctions/{vf_function_id}",
+              json=payload, cert=cert, verify=False) 
+
+def action_clean_pf_state(args):
+    pf,vfs = find_pf_vfs_from_sbdf(args)
+    device_id = pf['@odata.id'].split('/')[-3]
+    function_id = pf['Id']
+    owner = pf['Oem']['NTNX'].get('Owner', PARTITIONING_OWNER)
+    if not owner:
+       sys.exit("Error: Empty Owner")
+    print("Got owner:"+owner)
+    if True:
+      print("new PF state:", pf['Oem']['NTNX']['State'])
+      if pf['Oem']['NTNX']['State'] == "Host.Used":
+        print("PF state is in Used state so moving to Unused state")
+        payload = {"Oem": {"NTNX": {"State": "Host.Unused", "Owner": owner }}}
+        response = requests.patch(f"{HOST_GATEWAY}/host/v1/redfish/v1/Chassis/ahv/PCIeDevices/{device_id}/PCIeFunctions/{function_id}",
+              json=payload, cert=cert, verify=False) 
+        print(str(response), response.text)
+      if pf['Oem']['NTNX'].get('Network', None):
+       network_id = pf['Oem']['NTNX']['Network'].get('Id',None) 
+       if network_id:
+         print(f"Clearing Network Id: {network_id}")
+         payload = {"Oem": {"NTNX": {"Network": {"Id": ""}}}}
+         response = requests.patch(f"{HOST_GATEWAY}/host/v1/redfish/v1/Chassis/ahv/PCIeDevices/{device_id}/PCIeFunctions/{function_id}",
+              json=payload, cert=cert, verify=False) 
+         print(str(response), response.text)
+      return
 
 def action_show(args):
     if args.interface == 'all':
@@ -343,18 +411,26 @@ def action_show(args):
            print_function_info(f"Physical Function: {sbdf_to_nic_map[pf['Oem']['NTNX']['HostSBDF']]}", pf)
        return
     pf,vfs = find_pf_vfs_from_sbdf(args)
-    print_function_info("Physical Function:", pf)
+    # print_function_info("Physical Function:", pf)
 
-    if len(vfs) == 0:
-      print("No Virtual Functions found.\n")
-      return
+    # if len(vfs) == 0:
+    #   print("No Virtual Functions found.\n")
+    #   return
+    fil_vfs=[]
     for vf in vfs:
       if (vf['Oem']['NTNX']['Partitioning']['Vf']['ParentId'] == pf['Id']):
-         print_function_info("virtual Function:", vf)
+        #  print_function_info("virtual Function:", vf)
+        fil_vfs.append(vf)
+        
+    pf_vf_data = {
+      "Physical Function": [pf],
+      "Virtual Functions": fil_vfs
+    }
+    print(json.dumps(pf_vf_data, indent=4))
 
 def entry():
     allowed_host = subprocess.run("hostips", capture_output=True, text=True, timeout=5).stdout.split()
-    allowed_actions = ['partition', 'unpartition', 'show']
+    allowed_actions = ['partition', 'unpartition', 'show', "clean_pf_state", "clean_vf_state"]
     # Argument parser setup
     parser = argparse.ArgumentParser(description="Helper script for (un)partition of a network interface")
     subparsers = parser.add_subparsers(dest='command', help='sub-command help')
