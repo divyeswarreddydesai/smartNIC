@@ -270,7 +270,7 @@ class LinuxOperatingSystem(AbstractOperatingSystem):
             ERROR(f"Failed to start iperf server: {e}")
             raise ExpError(f"Failed to start iperf server: {e}")
   # @retry(retries=3, sleep_interval=5)
-  def run_iperf_client(self, server_ip,udp_protocol, duration=10, parallel=1):
+  def run_iperf_client(self, server_ip,udp_protocol, duration=10, parallel=1,interface=None):
         """
         Run the iperf client on the remote VM.
         Args:
@@ -279,6 +279,7 @@ class LinuxOperatingSystem(AbstractOperatingSystem):
         parallel(int): Number of parallel streams
         """
         try:
+            bind_option = f"-B {interface}" if interface else ""
             if udp_protocol:
                 client_command = f"sudo iperf3 -c {server_ip} -t {duration} -P {parallel} -i 1 -b 10G -u"
             else:
@@ -1393,7 +1394,7 @@ class LinuxOperatingSystem(AbstractOperatingSystem):
 
 #     return Folder(host=self, path=path, on_mount=True)
 
-  def ping_an_ip(self, ip, count=3, packet_size=None, wait_time=None):
+  def ping_an_ip(self, ip, count=10, packet_size=None, wait_time=None,interface=None):
     """
     This method is used to ping any ip from UVM.
 
@@ -1408,7 +1409,10 @@ class LinuxOperatingSystem(AbstractOperatingSystem):
       status(int) : 0 on success and 1 on failure.
 
     """
-    cmd = "ping -c %s %s" %(count, ip)
+    if interface:
+      cmd = "ping -c %s -I %s %s" % (count, interface, ip)
+    else:
+      cmd = "ping -c %s %s" %(count, ip)
     if packet_size is not None:
       cmd += " -s %s" % packet_size
     if wait_time is not None:
