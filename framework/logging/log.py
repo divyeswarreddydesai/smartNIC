@@ -8,7 +8,11 @@ def ERROR(message):
 def INFO(message):
     """Logs an informational message."""
     logger.info(message,stacklevel=2)
-
+def STEP(message):
+    """Logs a step message."""
+    logger.info("-"*50,stacklevel=2)
+    logger.info(message,stacklevel=2)
+    logger.info("-"*50,stacklevel=2)
 def DEBUG(message):
     """Logs a debug message."""
     logger.debug(message,stacklevel=2)
