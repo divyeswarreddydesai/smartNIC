@@ -215,7 +215,7 @@ def parse_flow(flow):
     return None
 
 def parse_ahv_port_flows(host):
-    command = "ovs-appctl dpctl/dump-flows --names -m type=offloaded"
+    command = "ovs-appctl dpctl/dump-flows --names -m type=offloaded | grep ahv"
     try:
         # Connect to the remote server
         result=host.execute(command)
@@ -524,7 +524,20 @@ class VM:
             raise ExpError("No NIC data found")
         # self.fill_nic_data(res['stdout'])
         # return res
-
+    def get_dhcp_assigned_ip(self,vm_data):
+        """
+        Get the DHCP assigned IP address from the NICs.
+        Args:
+        vm_data (dict): VM data containing NIC information.
+        
+        Returns:
+        str: DHCP assigned IP address.
+        """
+        for nic in vm_data.get('devices', {}).get('nics', []):
+            for binding in nic.get('status', {}).get('frontend', {}).get('net_bindings', []):
+                if binding.get('mechanism') == 'dhcp':
+                    return binding.get('address')
+        return None
     def fill_nic_data(self, nic_data):
         nic_uuid = nic_data['uuid']
         mac_address = nic_data['mac_address']
@@ -540,32 +553,37 @@ class VM:
                 network_name=network_name
             )
             self.add_nic(nic)
-    def ssh_setup(self,username="root",password="nutanix/4u"):
-        for nic in self.nic_data:
-            try:
-                # response = subprocess.run(['ping', '-c', '1', nic.ip_address], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-                response = subprocess.run(['ping', '-c', '1', nic.ip_address], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-                stdout = response.stdout.decode('utf-8')
-                if "100% packet loss" in stdout:
-                    INFO(response)
-                    continue
-
-                # Attempt to establish a connection using the NIC's IP address
-                self.ssh_obj=LinuxOperatingSystem(nic.ip_address, username, password)
-                INFO(f"Successfully connected to vm {self.name} at {nic.ip_address}")
-                self.ip=nic.ip_address
-                return
-            except Exception as e:
-                raise ExpError(f"Failed to establish connection to NIC {nic.nic_uuid} at {nic.ip_address}: {e}")
-        raise ExpError(f"Failed to establish connection to any NIC of VM {self.name}")
+    def remove_ansi_escape_sequences(text):
+        ansi_escape = re.compile(r'\x1B[@-_][0-?]*[ -/]*[@-~]')
+        return ansi_escape.sub('', text)
+    def ssh_setup(self,setup,username="root",password="nutanix/4u"):
+        vm_id_with_underscore = self.vm_id.replace('-', '_')
+        try:
+            res=setup.execute(f"busctl call com.nutanix.avm1 /com/nutanix/avm1/vms/{vm_id_with_underscore} com.nutanix.avm1.VmService Get | cut -d\' \' -f 4-")
+            INFO(res)
+            # res=self.remove_ansi_escape_sequences(res['stdout'].strip())
+            res=res['stdout'].strip('"\r\n').replace('\\"','"')
+            INFO(res)
+            vm_data=json.loads(res)
+        except Exception as e:
+            raise ExpError(f"Failed to get VM NIC data from avm: {e}")
+        acc_ip=self.get_dhcp_assigned_ip(vm_data)
+        self.ip=acc_ip
+        if self.ip is None:
+            raise ExpError(f"Failed to get IP address for VM {self.name}")
+        self.ssh_obj = LinuxOperatingSystem(self.ip, username=username, password=password)
+        if not self.ssh_obj:
+            raise ExpError(f"Failed to establish connection to any NIC of VM {self.name}")
     def get_interface_data(self):
         res = self.ssh_obj.execute("ip -j address")
         self.parse_ip_output(res["stdout"])
     def set_ip_for_smartnic(self,ip,route):
         self.snic_ip=ip
         self.ssh_obj.execute(f"ifconfig {self.smartnic_interface_data.name} {ip}/24 up")
-        self.ssh_obj.execute(f"ip route add {route}/24 dev {self.smartnic_interface_data.name}")
-        
+        try:
+            self.ssh_obj.execute(f"ip route add {route}/24 dev {self.smartnic_interface_data.name}")
+        except Exception as e:
+            ERROR(f"Failed to add route: {e}")
     def parse_ip_output(self, ip_output):
         interfaces = []
         data = json.loads(ip_output)
@@ -614,10 +632,10 @@ def start_iperf_test(vm_obj_1,vm_obj_2,udp):
     except Exception as e:
         ERROR(f"Failed to stop iperf server: {e}")
     vm_obj_2.ssh_obj.start_iperf_server(udp)
-    result = vm_obj_1.ssh_obj.run_iperf_client(vm_obj_2.ip,udp)
+    result = vm_obj_1.ssh_obj.run_iperf_client(vm_obj_2.snic_ip,udp)
     INFO(result)
     # Display the results
-    print(f"iperf test results from {vm_obj_1.ip} to {vm_obj_2.ip}:\n{result}")
+    print(f"iperf test results from {vm_obj_1.snic_ip} to {vm_obj_2.snic_ip}:\n{result}")
     return result
 def extract_names(log_content):
     # Regular expression to match the Name field
@@ -712,14 +730,14 @@ def test_traffic(setup,host_data,skip_deletion_of_setup=False):
     ahv_obj=setup.AHV_obj_dict[nic_config['host_ip']]
     vm_names=["vm1","vm2"]
     vm_data_dict=parse_vm_output(setup.execute("acli vm.list")["stdout"])
-    INFO(vm_data_dict)
+    # INFO(vm_data_dict)
     vm_dict ={name:vm_data_dict[name] for name in vm_names if name in vm_data_dict}
-    INFO(vm_dict)
+    # INFO(vm_dict)
     vm_obj_dict = {name: VM(name=name,vm_id=vm_data_dict[name]) for name in vm_names if name in vm_data_dict}
     INFO(vm_obj_dict)
     for vm_obj in vm_obj_dict.values():
         vm_obj.get_vnic_data(setup)
-        vm_obj.ssh_setup()
+        vm_obj.ssh_setup(ahv_obj)
         vm_obj.get_interface_data()
         vm_obj.find_smartnic_interface()
     # vm_obj_dict["vm1"].set_ip_for_smartnic("10.10.20.10")
@@ -842,10 +860,21 @@ def test_traffic(setup,host_data,skip_deletion_of_setup=False):
     time.sleep(4)
     flows=parse_ahv_port_flows(ahv_obj)
     INFO(flows)
-    tc_filters_vf1 = get_tc_filter_details(ahv_obj, vm_obj_dict['vm1'].vf_rep)
-    tc_filters_vf2 = get_tc_filter_details(ahv_obj, vm_obj_dict['vm2'].vf_rep)
+    tc_ping_filters_vf1_ingress = get_tc_filter_details(ahv_obj, vm_obj_dict['vm1'].vf_rep)
+    # tc_ping_filters_vf1_egress = get_tc_filter_details(ahv_obj, vm_obj_dict['vm1'].vf_rep,type="egress")
+    tc_ping_filters_vf2_ingress = get_tc_filter_details(ahv_obj, vm_obj_dict['vm2'].vf_rep)
+    # tc_ping_filters_vf2_egress = get_tc_filter_details(ahv_obj, vm_obj_dict['vm2'].vf_rep,type="egress")
     stop_tcpdump(ahv_obj, vm_obj_dict['vm1'].vf_rep)
     stop_tcpdump(ahv_obj, vm_obj_dict['vm2'].vf_rep)
+    STEP("tc filters of pping traffic:")
+    STEP(f"tc filters of ping traffic of {vm_obj_dict['vm1'].vf_rep} ingress")
+    INFO(tc_ping_filters_vf1_ingress)
+    # STEP(f"tc filters of ping traffic of {vm_obj_dict['vm1'].vf_rep} egress")
+    # INFO(tc_ping_filters_vf1_egress)
+    STEP(f"tc filters of ping traffic of {vm_obj_dict['vm2'].vf_rep} ingress")
+    INFO(tc_ping_filters_vf2_ingress)
+    # STEP(f"tc filters of ping traffic of {vm_obj_dict['vm2'].vf_rep} egress")
+    # INFO(tc_ping_filters_vf2_egress)
     
     if not check_flows(flows,vm_obj_dict['vm1'].vf_rep,vm_obj_dict['vm2'].vf_rep):
         STEP("Verification of offloaded flows: Fail")
@@ -872,38 +901,61 @@ def test_traffic(setup,host_data,skip_deletion_of_setup=False):
     # vm_obj_dict["vm1"].ssh_obj.ping_an_ip(vm_obj_dict["vm2"].snic_ip,interface=vm_obj_dict["vm1"].smartnic_interface_data.name)
     # time.sleep(2)
     
-    INFO("iperf test")
+    STEP("iperf test")
     result=parse_iperf_output(start_iperf_test(vm_obj_dict["vm1"],vm_obj_dict["vm2"],udp=False))
     INFO(result)
+    tc_tcp_filters_vf1_ingress = get_tc_filter_details(ahv_obj, vm_obj_dict['vm1'].vf_rep)
+    # tc_tcp_filters_vf1_egress = get_tc_filter_details(ahv_obj, vm_obj_dict['vm1'].vf_rep,type="egress")
+    
     result=parse_iperf_output(start_iperf_test(vm_obj_dict["vm1"],vm_obj_dict["vm2"],udp=True))
     INFO(result)
-    STEP("Verification of iperf test: Pass")
-    if check_tc_filters(tc_filters_vf1,vm_obj_dict['vm2'].vf_rep) and check_tc_filters(tc_filters_vf2,vm_obj_dict['vm1'].vf_rep):
-        STEP("Verification of tc filters: Pass")
+    tc_tcp_filters_vf2_ingress = get_tc_filter_details(ahv_obj, vm_obj_dict['vm2'].vf_rep)
+    # tc_tcp_filters_vf2_egress = get_tc_filter_details(ahv_obj, vm_obj_dict['vm2'].vf_rep,type="egress")
+    
+    STEP(" iperf test: Ran")
+    STEP("tc filters of iperf traffic:")
+    STEP(f"tc filters of iperf traffic of {vm_obj_dict['vm1'].vf_rep} ingress")
+    INFO(tc_tcp_filters_vf1_ingress)
+    # STEP(f"tc filters of iperf traffic of {vm_obj_dict['vm1'].vf_rep} egress")
+    # INFO(tc_tcp_filters_vf1_egress)
+    STEP(f"tc filters of iperf traffic of {vm_obj_dict['vm2'].vf_rep} ingress")
+    INFO(tc_tcp_filters_vf2_ingress)
+    # STEP(f"tc filters of iperf traffic of {vm_obj_dict['vm2'].vf_rep} egress")
+    # INFO(tc_tcp_filters_vf2_egress)
+    # tc_ping_filters_vf1_egress=json.loads(tc_ping_filters_vf1_egress)
+    tc_ping_filters_vf1_ingress=json.loads(tc_ping_filters_vf1_ingress)
+    # tc_ping_filters_vf2_egress=json.loads(tc_ping_filters_vf2_egress)
+    tc_ping_filters_vf2_ingress=json.loads(tc_ping_filters_vf2_ingress)
+    if check_tc_filters(tc_ping_filters_vf1_ingress,vm_obj_dict['vm2'].vf_rep) and check_tc_filters((tc_ping_filters_vf2_ingress),vm_obj_dict['vm1'].vf_rep):
+        STEP("Verification of tc filters ping traffic: Pass")
     else:
         ERROR("Failed to verify tc filters")
-        STEP("Verification of tc filters: Fail")
+        STEP("Verification of tc filters of ping traffic: Fail")
     if not skip_deletion_of_setup:
         for name,id in vm_dict.items():
             if name in vm_names:
                 run_and_check_output(setup,f"acli vm.off {name}:{id}")
                 run_and_check_output(setup,f"yes yes | acli vm.delete {name}:{id}")
-        try:
-            run_and_check_output(setup,"acli net.delete bas_sub")
-        except Exception as e:
-            if "Unknown name: bas_sub" in str(e):
+        if vlan_config.get("existing_vlan_name")=="":
+            
+            res=setup.execute("acli net.delete bas_sub")
+            
+            if "Unknown name: bas_sub" in str(res['stderr']):
                 pass
             else:
-                raise ExpError(f"Failed to delete network: {e}")
+                raise ExpError(f"Failed to delete network: {res['stderr']}")
        
-def get_tc_filter_details(vm_obj, interface):
-    cmd = f"tc -j -s -d -p filter show dev {interface} ingress"
+def get_tc_filter_details(vm_obj, interface,type="ingress"):
+    cmd = f"tc -j -s -d -p filter show dev {interface} {type}"
     result = vm_obj.execute(cmd)
-    return json.loads(result['stdout'])
+    # INFO(result)
+    return result['stdout']
 
 def check_tc_filters(tc_filters,vf2,count=9):
     for filter in tc_filters:
-        if filter['protocol'] == 'ip' and 'options' in filter:
+        # INFO(filter)
+        
+        if filter['protocol'] == 'ip' and 'options' in filter.keys():
             options = filter['options']
             # actions={}
             for action in options['actions']:
