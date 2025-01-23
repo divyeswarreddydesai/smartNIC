@@ -2,6 +2,7 @@
 import paramiko
 import time
 import socket
+import threading
 import traceback
 from scp import SCPClient, SCPException
 from paramiko.ssh_exception import AuthenticationException
@@ -104,9 +105,33 @@ class SSHClient:
     def _reconnect(self):
         print("Attempting to reconnect...")
         self.connect()
+    class TimeoutError(Exception):
+        pass
+
+    def execute_with_timeout(self,channel, timeout):
+        """
+        Executes a command and enforces a timeout for recv_exit_status.
+        """
+        def target():
+            try:
+                global exit_status
+                exit_status = channel.recv_exit_status()
+            except Exception as e:
+                global error
+                error = e
+
+        thread = threading.Thread(target=target)
+        thread.start()
+        thread.join(timeout)
+
+        if thread.is_alive():
+            raise TimeoutError("Command execution timed out")
+        if 'error' in globals():
+            raise error
+        return exit_status
     def execute(self, cmd, retries=3, timeout=60, tty=True, run_as_root=False, background=False, log_response=False, 
                 conn_acquire_timeout=1, close_ssh_connection=False, disable_safe_rm=True, log_command=True, 
-                async_=False, session_timeout=100):
+                async_=False, session_timeout=1000):
         if self.client is None:
             raise Exception("SSH client not connected")
         if not self.is_connected():
@@ -134,7 +159,7 @@ class SSHClient:
                 stdout.channel.settimeout(session_timeout)
                 stderr.channel.settimeout(session_timeout)
                 DEBUG("reading repsonse")
-                exit_status = stdout.channel.recv_exit_status()
+                exit_status = self.execute_with_timeout(stdout.channel, session_timeout)
                 stdout_data = stdout.read().decode()
                 stderr_data = stderr.read().decode()
                 stdout.channel.close()

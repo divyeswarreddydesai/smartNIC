@@ -281,9 +281,9 @@ class LinuxOperatingSystem(AbstractOperatingSystem):
         try:
             bind_option = f"-B {interface}" if interface else ""
             if udp_protocol:
-                client_command = f"sudo iperf3 -c {server_ip} -t {duration} -P {parallel} -i 1 -b 10G -u"
+                client_command = f"sudo iperf3 -c {server_ip} -t {duration} -P {parallel} -i 1 -b 10G -u "+bind_option
             else:
-                client_command = f"sudo iperf3 -c {server_ip} -t {duration} -P {parallel} -i 1"
+                client_command = f"sudo iperf3 -c {server_ip} -t {duration} -P {parallel} -i 1 "+bind_option
             result = self.execute(client_command)
             INFO("iperf client ran successfully.")
             # INFO(result['stdout'])
@@ -445,7 +445,7 @@ class LinuxOperatingSystem(AbstractOperatingSystem):
               retry_on_regex=None, background=False, log_response=True,
               trailing_sleep=False, conn_acquire_timeout=360,
               close_ssh_connection=False, disable_safe_rm=True,
-              log_command=True, async_=False, session_timeout=10):
+              log_command=True, async_=False, session_timeout=100):
     """Method to execute the specified command on the OS.
 
     Args:
@@ -2264,7 +2264,7 @@ class LinuxOperatingSystem(AbstractOperatingSystem):
   def __execute(self, cmd, retries=3, timeout=60, tty=True, run_as_root=False,
                 background=False, log_response=True, conn_acquire_timeout=360,
                 close_ssh_connection=False, disable_safe_rm=True,
-                log_command=True, async_=False, session_timeout=10):
+                log_command=True, async_=False, session_timeout=100):
     """Method which execute a remote or local Command.
 
     Args:
