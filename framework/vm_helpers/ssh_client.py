@@ -195,7 +195,18 @@ class SSHClient:
                 # time.sleep(conn_acquire_timeout )  # Wait before retrying
     def close(self):
         if self.client:
+            close_thread = threading.Thread(target=self._close_client)
+            close_thread.start()
+            close_thread.join(timeout=5)  # Timeout after 5 seconds
+            if close_thread.is_alive():
+                ERROR("Timeout while closing SSH client")
+
+    def _close_client(self):
+        try:
             self.client.close()
+        except Exception as e:
+            ERROR(f"Exception while closing SSH client: {e}")
+
     def _get_connection(self):
         """Initiates new SSH connection
 

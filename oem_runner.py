@@ -563,7 +563,7 @@ class VM:
             # INFO(res)
             # res=self.remove_ansi_escape_sequences(res['stdout'].strip())
             res=res['stdout'].strip('"\r\n').replace('\\"','"')
-            # INFO(res)
+            INFO(res)
             vm_data=json.loads(res)
         except Exception as e:
             raise ExpError(f"Failed to get VM NIC data from avm: {e}")
@@ -692,6 +692,7 @@ def vm_creation_and_network_creation(setup,host_data):
         raise ExpError("No common GroupLabel found among all VFs.")
     group_uuid = common_group_label[0]
     INFO(group_uuid)
+    
     vm_dict=parse_vm_output(setup.execute("acli vm.list")["stdout"])
     vm_dict = {name: vm_dict[name] for name in vm_names if name in vm_dict}
     for name,id in vm_dict.items():
@@ -715,6 +716,7 @@ def vm_creation_and_network_creation(setup,host_data):
         network_name="bas_sub"    
     for i in vm_names:
         run_and_check_output(setup,f"acli vm.create {i} memory=8G num_cores_per_vcpu=2 num_vcpus=2")
+        run_and_check_output(setup,f"acli vm.affinity_set {i} host_list={nic_config['host_ip']}")
         # setup.execute(f"acli vm.disk_create {i} create_size=50G container=Images bus=scsi index=1")        
         # setup.execute(f"acli vm.disk_create {i} create_size=200G container=Images bus=scsi index=2")
         run_and_check_output(setup,f"acli vm.disk_create {i}  bus=sata clone_from_image=\"vm_image\"") 
@@ -722,6 +724,10 @@ def vm_creation_and_network_creation(setup,host_data):
         run_and_check_output(setup,f"acli vm.assign_pcie_device {i} group_uuid={group_uuid}")
         run_and_check_output(setup,f"acli vm.nic_create {i} network={network_name}")
         run_and_check_output(setup,f"acli vm.on {i}")
+    for i in vm_names:
+        res=setup.execute(f"acli vm.get {i}")['stdout']
+        if f"host_name: \"{nic_config['host_ip']}\"" not in res:
+            raise ExpError(f"Failed to assign VM to host {nic_config['host_ip']}")
     INFO("waiting for IPs to be assigned")
     time.sleep(60)
 def test_traffic(setup,host_data,skip_deletion_of_setup=False):
@@ -818,8 +824,10 @@ def test_traffic(setup,host_data,skip_deletion_of_setup=False):
     #     for vf2 in VFs[vm_dict["vm2"]]:
     # vm_obj_dict["vm1"].ssh_obj.execute("ifconfig")
     # vm_obj_dict["vm2"].ssh_obj.execute("ifconfig")
-    ahv_obj.execute(f"ovs-ofctl add-flow {bridge} \"in_port={vm_obj_dict['vm1'].vf_rep},actions=output:{vm_obj_dict['vm2'].vf_rep}\"")
-    ahv_obj.execute(f"ovs-ofctl add-flow {bridge} \"in_port={vm_obj_dict['vm2'].vf_rep},actions=output:{vm_obj_dict['vm1'].vf_rep}\"")
+    # ahv_obj.execute(f"ovs-ofctl add-flow {bridge} \"in_port={vm_obj_dict['vm1'].vf_rep},actions=output:{vm_obj_dict['vm2'].vf_rep}\"")
+    ahv_obj.execute(f"ovs-ofctl add-flow {bridge} \"in_port={vm_obj_dict['vm1'].vf_rep},eth_src={vm_obj_dict['vm1'].smartnic_interface_data.mac_address},eth_dst={vm_obj_dict['vm2'].smartnic_interface_data.mac_address},eth_type=0x0800,nw_src=192.168.1.10/32,nw_dst=192.168.1.20/32,actions=output:{vm_obj_dict['vm2'].vf_rep}\"")
+    ahv_obj.execute(f"ovs-ofctl add-flow {bridge} \"in_port={vm_obj_dict['vm2'].vf_rep},eth_src={vm_obj_dict['vm2'].smartnic_interface_data.mac_address},eth_dst={vm_obj_dict['vm1'].smartnic_interface_data.mac_address},eth_type=0x0800,nw_src=192.168.1.20/32,nw_dst=192.168.1.10/32,actions=output:{vm_obj_dict['vm1'].vf_rep}\"")
+    # ahv_obj.execute(f"ovs-ofctl add-flow {bridge} \"in_port={vm_obj_dict['vm2'].vf_rep},actions=output:{vm_obj_dict['vm1'].vf_rep}\"")
     # start_continuous_ping(vm_obj_dict["vm1"].ip,vm_obj_dict["vm2"].ip,vm_obj_dict["vm1"].smartnic_interface_data.name)
     # vm_obj_dict["vm1"].ssh_obj.execute("ifconfig")
     # vm_obj_dict["vm2"].ssh_obj.execute("ifconfig")
@@ -953,6 +961,8 @@ def test_traffic(setup,host_data,skip_deletion_of_setup=False):
         ERROR("Failed to verify tc filters")
         STEP("Verification of tc filters of ping traffic: Fail")
     if not skip_deletion_of_setup:
+        ahv_obj.execute(f"ovs-ofctl del-flows {bridge} in_port={vm_obj_dict['vm1'].vf_rep}")
+        ahv_obj.execute(f"ovs-ofctl del-flows {bridge} in_port={vm_obj_dict['vm2'].vf_rep}")
         for name,id in vm_dict.items():
             if name in vm_names:
                 run_and_check_output(setup,f"acli vm.off {name}:{id}")
