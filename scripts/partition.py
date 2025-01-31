@@ -238,8 +238,27 @@ def action_partition(args):
     if pf['Oem']['NTNX']['Partitioning']['Pf'] == None:
         sys.exit(f"Partitioning not support for {args.interface} in host({args.host_ip})")
 
-    #print(f"Got Partitioning json: {pf['Oem']['NTNX']['Partitioning']}")
-    schema_id = pf['Oem']['NTNX']['Partitioning']['Pf']['SupportedSchemas'][0]['Id']
+    print(f"Got Partitioning json: {pf['Oem']['NTNX']}")
+    schema_id = None
+    found=False
+    for schema in pf['Oem']['NTNX']['Partitioning']['Pf']['SupportedSchemas']:
+      for group in schema['Symmetric-v1']['Groups']:
+        try: 
+          response = requests.get(f"{HOST_GATEWAY}/host/v1/devices/groups/{group['GroupLabel']}", params={"$expand":".($levels=3)"}, cert=cert, verify=False)
+          response.raise_for_status()
+        except (HTTPError,RequestException,Exception) as err:
+          print(f'An unexpected error occurred during group request: {err}')
+        else:  
+          group_data = json.loads(response.text)
+          print(f"\t  {group}")
+        if group_data:
+          if group_data.get('common_fields',{}).get('Oem',{}).get('NTNX',{}).get('Features',{}).get('OVSPort'):
+            schema_id = schema['Id']
+            found=True
+            break
+      if found:
+        break
+    # schema_id = pf['Oem']['NTNX']['Partitioning']['Pf']['SupportedSchemas'][0]['Id']
     owner = pf['Oem']['NTNX'].get('Owner', None)
     if not owner:
        sys.exit("Error: Empty Owner") 

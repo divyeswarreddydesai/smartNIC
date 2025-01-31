@@ -215,14 +215,14 @@ def parse_flow(flow):
     return None
 
 def parse_ahv_port_flows(host):
-    command = "ovs-appctl dpctl/dump-flows --names -m type=offloaded | grep ahv"
+    command = "ovs-appctl dpctl/dump-flows --names -m type=offloaded| grep ahv"
     try:
         # Connect to the remote server
         result=host.execute(command)
         output = result["stdout"]
 
     except Exception as e:
-        raise ExpError(f"Failed to run command{command} due to error: {e}")
+        assert False, f"The flows are not offloaded or Failed to run command: {e}"
     # output = output.split("\n")
     print("-----------------RAW OFFLOADED FLOWS ON HOST------------------")
     print(output)
@@ -560,10 +560,10 @@ class VM:
         vm_id_with_underscore = self.vm_id.replace('-', '_')
         try:
             res=setup.execute(f"busctl call com.nutanix.avm1 /com/nutanix/avm1/vms/{vm_id_with_underscore} com.nutanix.avm1.VmService Get | cut -d\' \' -f 4-")
-            INFO(res)
+            # INFO(res)
             # res=self.remove_ansi_escape_sequences(res['stdout'].strip())
             res=res['stdout'].strip('"\r\n').replace('\\"','"')
-            INFO(res)
+            # INFO(res)
             vm_data=json.loads(res)
         except Exception as e:
             raise ExpError(f"Failed to get VM NIC data from avm: {e}")
@@ -625,6 +625,8 @@ def check_flows(flows,port1,port2,packet_count=None):
     else:
         return True
 def start_iperf_test(vm_obj_1,vm_obj_2,udp):
+    vm_obj_1.set_ip_for_smartnic("192.168.1.10","192.168.1.0")
+    vm_obj_2.set_ip_for_smartnic("192.168.1.20","192.168.1.0")
     vm_obj_1.ssh_obj.execute("systemctl stop firewalld",run_as_root=True)
     vm_obj_2.ssh_obj.execute("systemctl stop firewalld",run_as_root=True)
     try:
@@ -839,8 +841,6 @@ def test_traffic(setup,host_data,skip_deletion_of_setup=False):
     time.sleep(2)
     # vm_obj_dict["vm1"].ssh_obj.execute("ifconfig")
     # vm_obj_dict["vm2"].ssh_obj.execute("ifconfig")
-    vm_obj_dict["vm1"].set_ip_for_smartnic("192.168.1.10","192.168.1.0")
-    vm_obj_dict["vm2"].set_ip_for_smartnic("192.168.1.20","192.168.1.0")
     if bridge=="br0":
         try:
             ahv_obj.execute(f"ovs-appctl bond/set-active-member br0-up {nic_config['port']}")
@@ -854,6 +854,8 @@ def test_traffic(setup,host_data,skip_deletion_of_setup=False):
     vm_obj_dict["vm1"].ssh_obj.execute("ifconfig")
     vm_obj_dict["vm2"].ssh_obj.execute("ifconfig")
     # import pdb;pdb.set_trace()
+    vm_obj_dict["vm1"].set_ip_for_smartnic("192.168.1.10","192.168.1.0")
+    vm_obj_dict["vm2"].set_ip_for_smartnic("192.168.1.20","192.168.1.0")
     vm_obj_dict["vm1"].ssh_obj.ping_an_ip(vm_obj_dict["vm2"].snic_ip,interface=vm_obj_dict["vm1"].smartnic_interface_data.name)
     # vm_obj_dict["vm1"].ssh_obj.execute("ifconfig")
     # vm_obj_dict["vm2"].ssh_obj.execute("ifconfig")
