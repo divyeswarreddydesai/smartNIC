@@ -667,20 +667,23 @@ def vm_creation_and_network_creation(setup,host_data):
         ERROR(f"Failed to create bridge on AHV: {e}")
     vm_names=["vm1","vm2"]
     if nic_config.get('port') and nic_config.get("host_ip"):
-        try:
-            res=cvm_obj.execute(f"/home/nutanix/tmp/partition.py partition {nic_config['host_ip']} {nic_config['port']}")
-        
-        except Exception as e:
-            if "already partitioned" in str(e):
-                pass
-            else:
-                ERROR(f"Failed to partition NIC: {e}")
         res=cvm_obj.execute(f"/home/nutanix/tmp/partition.py show {nic_config['host_ip']} {nic_config['port']}")
         # INFO(res)
         nic_vf_data=read_nic_data(res["stdout"])
-        # INFO(nic_vf_data)
-    if not nic_vf_data:
-        raise ExpError("Failed to get NIC data.")
+        if len(nic_vf_data["Virtual Functions"]):
+            INFO("NIC is in partitioned state")
+        else:
+            try:
+                res=cvm_obj.execute(f"/home/nutanix/tmp/partition.py partition {nic_config['host_ip']} {nic_config['port']}")
+            except Exception as e:
+                if "already partitioned" in str(e):
+                    pass
+                else:
+                    ERROR(f"Failed to partition NIC: {e}")
+            res=cvm_obj.execute(f"/home/nutanix/tmp/partition.py show {nic_config['host_ip']} {nic_config['port']}")
+            nic_vf_data=read_nic_data(res["stdout"])
+    if not len(nic_vf_data["Virtual Functions"]):
+        raise ExpError(f"Failed to create VFs for the NIC {nic_config['port']} since it is already in partitioned state but no VFs are found")
     group_labels = []
     for vf in nic_vf_data["Virtual Functions"]:
         group_labels.extend(vf.group_labels)
