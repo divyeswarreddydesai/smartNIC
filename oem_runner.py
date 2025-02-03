@@ -457,10 +457,7 @@ def image_creation(setup,vm_args):
         raise ExpError("No container starting with 'default' found.")
     def_container = def_container.strip()
     INFO(f"Default container: {def_container}")
-    
-    
     try:
-        
         res=setup.execute(f"acli image.create {vm_args['name']} source_url={vm_args['source_uri']} image_type=kDiskImage container={def_container}",session_timeout=600)
         INFO(res)
         return True
