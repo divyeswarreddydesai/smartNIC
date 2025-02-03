@@ -112,12 +112,19 @@ class SSHClient:
         """
         Executes a command and enforces a timeout for recv_exit_status.
         """
+        exit_status = None
+        error = None
+        stop_thread = threading.Event()
+        DEBUG("Executing command with timeout")
+        DEBUG(timeout)
         def target():
+            nonlocal exit_status, error
             try:
-                global exit_status
-                exit_status = channel.recv_exit_status()
+                while not stop_thread.is_set():
+                    if channel.exit_status_ready():
+                        exit_status = channel.recv_exit_status()
+                        break
             except Exception as e:
-                global error
                 error = e
 
         thread = threading.Thread(target=target)
@@ -125,8 +132,10 @@ class SSHClient:
         thread.join(timeout)
 
         if thread.is_alive():
+            stop_thread.set()
+            thread.join()  # Ensure the thread is properly cleaned up
             raise TimeoutError("Command execution timed out")
-        if 'error' in globals():
+        if error:
             raise error
         return exit_status
     def execute(self, cmd, retries=3, timeout=60, tty=True, run_as_root=False, background=False, log_response=False, 
