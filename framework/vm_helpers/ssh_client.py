@@ -215,7 +215,13 @@ class SSHClient:
             self.client.close()
         except Exception as e:
             ERROR(f"Exception while closing SSH client: {e}")
-
+    def _remove_host_key(self, hostname):
+        """Remove the host key for the given hostname from the known hosts file."""
+        known_hosts = paramiko.util.load_host_keys(paramiko.util.get_default_know_hosts())
+        if hostname in known_hosts:
+            del known_hosts[hostname]
+            known_hosts.save(paramiko.util.get_default_know_hosts())
+            DEBUG(f"Removed old host key for {hostname}")
     def _get_connection(self):
         """Initiates new SSH connection
 
@@ -262,6 +268,15 @@ class SSHClient:
                 ERROR("Authentication Error. Credentials Used : %s,%s" %
                     (self._username, self._password))
                 raise ExpError('Authentication Error. %s' % str(e))
+            except paramiko.ssh_exception.SSHException as e:
+                if "Host key for server" in str(e):
+                    ERROR(f"Host key mismatch for {self.ip}. Removing old key and retrying.")
+                    self._remove_host_key(self.ip)
+                    continue
+                if connection_attempt == max_attempt:
+                    raise ExpError('Connection Error. %s' % str(e))
+                DEBUG("Hit error: %s. Continuing with retry" % str(e))
+        
             except socket.timeout as e:
                 if connection_attempt == max_attempt:
                     raise ExpError(
