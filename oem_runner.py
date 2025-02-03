@@ -1004,6 +1004,7 @@ def test_traffic(setup,host_data,skip_deletion_of_setup=False):
         if PARTITION:
             try:
                 res=cvm_obj.execute(f"/home/nutanix/tmp/partition.py unpartition {nic_config['host_ip']} {nic_config['port']}")
+                INFO("NIC is unpartitioned successfully")
             except Exception as e:
                 if "not in partition state" in str(e):
                     pass
