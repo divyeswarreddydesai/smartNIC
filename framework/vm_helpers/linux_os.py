@@ -284,7 +284,7 @@ class LinuxOperatingSystem(AbstractOperatingSystem):
                 client_command = f"sudo iperf3 -c {server_ip} -t {duration} -P {parallel} -i 1 -b 10G -u "+bind_option
             else:
                 client_command = f"sudo iperf3 -c {server_ip} -t {duration} -P {parallel} -i 1 "+bind_option
-            result = self.execute(client_command)
+            result = self.execute(client_command,session_timeout=duration+10)
             INFO("iperf client ran successfully.")
             # INFO(result['stdout'])
             return result['stdout']
@@ -528,6 +528,7 @@ class LinuxOperatingSystem(AbstractOperatingSystem):
         # we normally use tty=True (in line with ssh.py execute())
         tty = True
     while attempts < retries:
+      DEBUG(session_timeout)
       result = self.__execute(cmd=cmd, retries=retries, timeout=timeout,
                               tty=tty, run_as_root=run_as_root,
                               background=background, log_response=log_response,
