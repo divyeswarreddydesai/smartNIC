@@ -15,6 +15,9 @@ from semver import Version
 import json
 from framework.logging.log import INFO,DEBUG,WARN,ERROR,STEP,ERROR
 from framework.vm_helpers.vm_helpers import CVM,AHV
+
+PARTITION=False
+
 def load_config(config_file):
     with open(config_file, 'r') as file:
         return json.load(file)
@@ -650,6 +653,7 @@ def extract_names(log_content):
     
     return names
 def vm_creation_and_network_creation(setup,host_data):
+    global PARTITION
     # config=host_data['cluster_host_config']
     # def_config=host_data['default_config']
     nic_config=host_data["nic_config"]
@@ -668,6 +672,7 @@ def vm_creation_and_network_creation(setup,host_data):
     except Exception as e:
         ERROR(f"Failed to create bridge on AHV: {e}")
     vm_names=["vm1","vm2"]
+    # partition=False
     if nic_config.get('port') and nic_config.get("host_ip"):
         res=cvm_obj.execute(f"/home/nutanix/tmp/partition.py show {nic_config['host_ip']} {nic_config['port']}")
         # INFO(res)
@@ -676,7 +681,12 @@ def vm_creation_and_network_creation(setup,host_data):
             INFO("NIC is in partitioned state")
         else:
             try:
+                res=cvm_obj.execute(f"/home/nutanix/tmp/partition.py setup {nic_config['host_ip']}")
+            except Exception as e:
+                ERROR(f"Failed to run setup for partition: {e}")
+            try:
                 res=cvm_obj.execute(f"/home/nutanix/tmp/partition.py partition {nic_config['host_ip']} {nic_config['port']}")
+                PARTITION=True
             except Exception as e:
                 if "already partitioned" in str(e):
                     pass
@@ -994,6 +1004,14 @@ def test_traffic(setup,host_data,skip_deletion_of_setup=False):
                 pass
             else:
                 raise ExpError(f"Failed to delete network: {res['stderr']}")
+        if PARTITION:
+            try:
+                res=cvm_obj.execute(f"/home/nutanix/tmp/partition.py unpartition {nic_config['host_ip']} {nic_config['port']}")
+            except Exception as e:
+                if "not in partition state" in str(e):
+                    pass
+                else:
+                    ERROR(f"Failed to unpartition NIC: {e}")
        
 def get_tc_filter_details(vm_obj, interface,type="ingress"):
     cmd = f"tc -j -s -d -p filter show dev {interface} {type}"
@@ -1032,7 +1050,7 @@ if __name__ == "__main__":
     cvm_obj=CVM(host_config["ips"]['pe_ip'])
     vm_image_creation(cvm_obj,host_data)
     nic_data(cvm_obj,args.skip_fw_check)
-    nic_config=host_config["nic_config"]
+    # nic_config=host_config["nic_config"]
     if not args.skip_setup:
         vm_creation_and_network_creation(cvm_obj,host_config)
     test_traffic(cvm_obj,host_config,args.skip_teardown)    
