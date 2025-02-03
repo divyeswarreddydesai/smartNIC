@@ -318,6 +318,7 @@ def read_nic_data(output):
 
     # return {"Physical Functions": physical_functions, "Virtual Functions": virtual_functions}
     for function in data.get("Physical Function", []):
+        active_schema=function.get("Oem",{}).get("NTNX",{}).get("Partitioning", {}).get("Pf",{}).get("ActiveSchema",{})
         physical_functions.append(Function(
             id=function.get("Id"),
             function_id=function.get("FunctionId"),
@@ -327,12 +328,13 @@ def read_nic_data(output):
             owner=function.get("Oem", {}).get("NTNX", {}).get("Owner"),  # Assuming owner is not present in the provided JSON
             network_id=None,  # Assuming network_id is not present in the provided JSON
             vf_idx=function.get("Oem", {}).get("NTNX", {}).get("Partitioning", {}).get("Vf", {}).get("VfIdx"),
-            active_schema=function.get("Oem",{}).get("NTNX",{}).get("Partitioning", {}).get("Pf",{}).get("ActiveSchema",{}).get("Id"),  # Assuming active_schema is not present in the provided JSON
-            supported_schemas=function.get("Oem",{}).get("NTNX",{}).get("Partitioning", {}).get("Pf",{}).get("SupportedSchemas")  # Assuming supported_schemas is not present in the provided JSON
+            active_schema= active_schema.get("Id",None) if active_schema else None,  # Assuming active_schema is not present in the provided JSON
+            supported_schemas=function.get("Oem",{}).get("NTNX",{}).get("Partitioning", {}).get("Pf",{}).get("SupportedSchemas",None)  # Assuming supported_schemas is not present in the provided JSON
             # group_labels=[group.get("GroupLabel") for group in function.get("Oem", {}).get("NTNX", {}).get("Groups", [])]
         ))
 
     for function in data.get("Virtual Functions", []):
+        active_schema=function.get("Oem",{}).get("NTNX",{}).get("Partitioning", {}).get("Pf",{}).get("ActiveSchema",{})
         virtual_functions.append(Function(
             id=function.get("Id"),
             function_id=function.get("FunctionId"),
@@ -342,8 +344,8 @@ def read_nic_data(output):
             owner=function.get("Oem", {}).get("NTNX", {}).get("Owner"),  # Assuming owner is not present in the provided JSON
             network_id=function.get("Oem", {}).get("NTNX", {}).get("Network", {}).get("Id"),  # Assuming network_id is not present in the provided JSON
             vf_idx=function.get("Oem", {}).get("NTNX", {}).get("Partitioning", {}).get("Vf", {}).get("VfIdx"),
-            active_schema=function.get("Oem",{}).get("NTNX",{}).get("Partitioning", {}).get("Pf",{}).get("ActiveSchema",{}).get("Id"),  # Assuming active_schema is not present in the provided JSON
-            supported_schemas=function.get("Oem",{}).get("NTNX",{}).get("Partitioning", {}).get("Pf",{}).get("SupportedSchemas"),  # Assuming supported_schemas is not present in the provided JSON
+            active_schema=active_schema.get("Id",None) if active_schema else None,  # Assuming active_schema is not present in the provided JSON
+            supported_schemas=function.get("Oem",{}).get("NTNX",{}).get("Partitioning", {}).get("Pf",{}).get("SupportedSchemas",None),  # Assuming supported_schemas is not present in the provided JSON
             group_labels=[group.get("GroupLabel") for group in function.get("Oem", {}).get("NTNX", {}).get("Groups", [])]
         ))
 
@@ -456,7 +458,7 @@ def image_creation(setup,vm_args):
     
     try:
         
-        res=setup.execute(f"acli image.create {vm_args['name']} source_url={vm_args['source_uri']} image_type=kDiskImage container={def_container}")
+        res=setup.execute(f"acli image.create {vm_args['name']} source_url={vm_args['source_uri']} image_type=kDiskImage container={def_container}",session_timeout=600)
         INFO(res)
         return True
     except Exception as e:
@@ -634,7 +636,7 @@ def start_iperf_test(vm_obj_1,vm_obj_2,udp):
     except Exception as e:
         ERROR(f"Failed to stop iperf server: {e}")
     vm_obj_2.ssh_obj.start_iperf_server(udp)
-    result = vm_obj_1.ssh_obj.run_iperf_client(vm_obj_2.snic_ip,udp)
+    result = vm_obj_1.ssh_obj.run_iperf_client(vm_obj_2.snic_ip,udp,duration=300)
     INFO(result)
     # Display the results
     print(f"iperf test results from {vm_obj_1.snic_ip} to {vm_obj_2.snic_ip}:\n{result}")
@@ -880,7 +882,7 @@ def test_traffic(setup,host_data,skip_deletion_of_setup=False):
     tc_ping_filters_br0_egress = get_tc_filter_details(ahv_obj, bridge,type="egress")
     stop_tcpdump(ahv_obj, vm_obj_dict['vm1'].vf_rep)
     stop_tcpdump(ahv_obj, vm_obj_dict['vm2'].vf_rep)
-    STEP("tc filters of pping traffic:")
+    STEP("tc filters of ping traffic:")
     STEP(f"tc filters of ping traffic of {vm_obj_dict['vm1'].vf_rep} ingress")
     INFO(tc_ping_filters_vf1_ingress)
     # STEP(f"tc filters of ping traffic of {vm_obj_dict['vm1'].vf_rep} egress")
@@ -893,10 +895,10 @@ def test_traffic(setup,host_data,skip_deletion_of_setup=False):
     # INFO(tc_ping_filters_vf2_egress)
     
     if not check_flows(flows,vm_obj_dict['vm1'].vf_rep,vm_obj_dict['vm2'].vf_rep):
-        STEP("Verification of offloaded flows: Fail")
+        STEP("Verification of ping offloaded flows: Fail")
         raise ExpError("Failed to add flows")
     else:
-        STEP("Verification of offloaded flows: Pass")
+        STEP("Verification of ping offloaded flows: Pass")
     
     
     
@@ -925,6 +927,13 @@ def test_traffic(setup,host_data,skip_deletion_of_setup=False):
     tc_filters_br0_egress_tcp=get_tc_filter_details(ahv_obj, bridge,type="egress")
     # tc_tcp_filters_vf1_egress = get_tc_filter_details(ahv_obj, vm_obj_dict['vm1'].vf_rep,type="egress")
     INFO("waiting for the tc filters of tcp to get erased")
+    flows=parse_ahv_port_flows(ahv_obj)
+    INFO(flows)
+    if not check_flows(flows,vm_obj_dict['vm1'].vf_rep,vm_obj_dict['vm2'].vf_rep):
+        STEP("Verification of TCP offloaded flows: Fail")
+        raise ExpError("Failed to add flows")
+    else:
+        STEP("Verification of TCP offloaded flows: Pass")
     time.sleep(10)
     
     result=parse_iperf_output(start_iperf_test(vm_obj_dict["vm1"],vm_obj_dict["vm2"],udp=True))
@@ -932,6 +941,13 @@ def test_traffic(setup,host_data,skip_deletion_of_setup=False):
     tc_filters_vf1_ingress_udp = get_tc_filter_details(ahv_obj, vm_obj_dict['vm1'].vf_rep)
     tc_filters_vf2_ingress_udp = get_tc_filter_details(ahv_obj, vm_obj_dict['vm2'].vf_rep)
     tc_filters_br0_egress_udp=get_tc_filter_details(ahv_obj, bridge,type="egress")
+    flows=parse_ahv_port_flows(ahv_obj)
+    INFO(flows)
+    if not check_flows(flows,vm_obj_dict['vm1'].vf_rep,vm_obj_dict['vm2'].vf_rep):
+        STEP("Verification of UDP offloaded flows: Fail")
+        raise ExpError("Failed to add flows")
+    else:
+        STEP("Verification of UDP offloaded flows: Pass")
     # tc_tcp_filters_vf2_egress = get_tc_filter_details(ahv_obj, vm_obj_dict['vm2'].vf_rep,type="egress")
     
     STEP(" iperf test: Ran")
