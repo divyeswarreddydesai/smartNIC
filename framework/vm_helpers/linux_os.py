@@ -241,7 +241,7 @@ class LinuxOperatingSystem(AbstractOperatingSystem):
         """
         try:
             if udp_protocol:
-                server_command = "sudo iperf3 -s -D "
+                server_command = "sudo iperf3 -s -D -p 9000"
             else:
                 server_command = "sudo iperf3 -s -D "
             
@@ -281,7 +281,7 @@ class LinuxOperatingSystem(AbstractOperatingSystem):
         try:
             bind_option = f"-B {interface}" if interface else ""
             if udp_protocol:
-                client_command = f"sudo iperf3 -c {server_ip} -t {duration} -P {parallel} -i 1 -b 10G -u "+bind_option
+                client_command = f"sudo iperf3 -c {server_ip} -t {duration} -p 9000 -P {parallel} -i 1 -b 10G -u "+bind_option
             else:
                 client_command = f"sudo iperf3 -c {server_ip} -t {duration} -P {parallel} -i 1 "+bind_option
             result = self.execute(client_command,session_timeout=duration+10)
