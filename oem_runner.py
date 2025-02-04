@@ -77,7 +77,7 @@ def count_packets(vm_obj, pcap_file, src_ip=None, dst_ip=None,pac_type="icmp"):
 
     
     
-def nic_data(setup_obj,skip_driver):
+def nic_data(setup_obj):
         INFO("came to setup")
         # ent_mngr=self.setup_obj.get_entity_manager()
         # ent_mngr.create_entities(self.class_args)
@@ -169,31 +169,39 @@ def nic_data(setup_obj,skip_driver):
                                     
                                     return driver_version
                                 setup_obj.AHV_nic_port_map[i][port]["nic_family"] = extract_nic_family(response)
+                                setup_obj.AHV_nic_port_map[i][port]['firmware_version'] = extract_firmware_version(response)[0].split(" ")
+                                setup_obj.AHV_nic_port_map[i][port]['driver_version'] = extract_driver_version(response)[0]
                                 setup_obj.AHV_nic_port_map[i][port]["supported_capabilities"] = extract_supported_capabilities(response)
-                                if len(setup_obj.AHV_nic_port_map[i][port]["supported_capabilities"])>0 and not skip_driver:
-                                    firm=extract_firmware_version(response)[0].split(" ")
-                                    min_firm="22.41.1000 (MT_0000000437)".split(" ")
-                                    DEBUG(firm)
-                                    DEBUG(min_firm)
-                                    if (Version.parse(firm[0])<Version.parse(min_firm[0])):
-                                        setup_obj.AHV_nic_port_map[i].pop(port)
-                                        ERROR(f"Minimum firmware version required is {min_firm}. Current firmware version is {firm[0]} for port {port} in {i}.")
-                                        raise ExpError(f"Minimum firmware version required is {min_firm}. Current firmware version is {firm[0]}.If you would still like to run it use --skip_fw_check flag for port {port} in {i}")
-                                    DEBUG("firware version satisfied")
-                                    driver_version=extract_driver_version(response)[0].split(":")
-                                    min_driver="mlx5_core:23.10-3.2.2".split(":")
-                                    # parsed=LooseVersion(driver_version[1])
-                                    # INFO(parsed)
-                                    driver_version[1]= driver_version[1].replace('-', '.0-')
-                                    min_driver[1]= min_driver[1].replace('-', '.0-')
-                                    # DEBUG(driver_version)
-                                    # DEBUG(min_driver)
-                                    if (Version.parse(driver_version[1])<Version.parse(min_driver[1])) and driver_version[0]==min_driver[0]:
-                                        setup_obj.AHV_nic_port_map[i].pop(port)
-                                        ERROR(f"Minimum driver version required is {min_driver}. Current driver version is {driver_version[0]} for port {port} in {i}.")
-                                        raise ExpError(f"Minimum driver version required is {min_driver}. Current driver version is {driver_version[0]}.If you would still like to run it use --skip_fw_check flag for port {port} in {i}")
-                                    DEBUG("driver version satisfied")
-                                    INFO("{0} firmware version is {1}".format(port,firm[0]))
+                                if "ConnectX-6 Dx" in response:
+                                    setup_obj.AHV_nic_port_map[i][port]["nic_type"]="ConnectX-6 Dx"
+                                elif "ConnectX-6 Lx" in response:
+                                    setup_obj.AHV_nic_port_map[i][port]["nic_type"]="ConnectX-6 Lx"
+                                else:
+                                    setup_obj.AHV_nic_port_map[i][port]["nic_type"]="Unknown"
+                                # if len(setup_obj.AHV_nic_port_map[i][port]["supported_capabilities"])>0 and not skip_driver:
+                                #     firm=extract_firmware_version(response)[0].split(" ")
+                                #     min_firm="22.41.1000 (MT_0000000437)".split(" ")
+                                #     DEBUG(firm)
+                                #     DEBUG(min_firm)
+                                #     if (Version.parse(firm[0])<Version.parse(min_firm[0])):
+                                #         setup_obj.AHV_nic_port_map[i].pop(port)
+                                #         ERROR(f"Minimum firmware version required is {min_firm}. Current firmware version is {firm[0]} for port {port} in {i}.")
+                                #         raise ExpError(f"Minimum firmware version required is {min_firm}. Current firmware version is {firm[0]}.If you would still like to run it use --skip_fw_check flag for port {port} in {i}")
+                                #     DEBUG("firware version satisfied")
+                                #     driver_version=extract_driver_version(response)[0].split(":")
+                                #     min_driver="mlx5_core:23.10-3.2.2".split(":")
+                                #     # parsed=LooseVersion(driver_version[1])
+                                #     # INFO(parsed)
+                                #     driver_version[1]= driver_version[1].replace('-', '.0-')
+                                #     min_driver[1]= min_driver[1].replace('-', '.0-')
+                                #     # DEBUG(driver_version)
+                                #     # DEBUG(min_driver)
+                                #     if (Version.parse(driver_version[1])<Version.parse(min_driver[1])) and driver_version[0]==min_driver[0]:
+                                #         setup_obj.AHV_nic_port_map[i].pop(port)
+                                #         ERROR(f"Minimum driver version required is {min_driver}. Current driver version is {driver_version[0]} for port {port} in {i}.")
+                                #         raise ExpError(f"Minimum driver version required is {min_driver}. Current driver version is {driver_version[0]}.If you would still like to run it use --skip_fw_check flag for port {port} in {i}")
+                                #     DEBUG("driver version satisfied")
+                                #     INFO("{0} firmware version is {1}".format(port,firm[0]))
                                 
                             except Exception as e:
                                 ERROR(f"Failed to get nic details: {e}")
@@ -516,9 +524,28 @@ class VM:
         self.vf_rep=None
         self.snic_ip=None
         self.ip=None
+        self.driver_version=None
+        self.firmware_version=None
     def add_nic(self, nic):
         self.nic_data.append(nic)
-
+    def get_sNIC_ethtool_info(self):
+        try:
+            res=self.ssh_obj.execute(f"ethtool -i {self.smartnic_interface_data.name}")
+            INFO(res["stdout"])
+            info = {}
+            for line in res['stdout'].splitlines():
+                key, value = line.split(': ', 1)
+                info[key.strip()] = value.strip()
+            if info.get('driver') and info.get('version'):
+                self.driver_version = [info.get('driver'), info.get('version')]
+            else:
+                raise ExpError("Failed to get driver version")
+            if info.get('firmware-version'):
+                self.firmware_version = info.get('firmware-version').split(" ")[0]
+            else:
+                raise ExpError("Failed to get firmware version")
+        except Exception as e:
+            raise ExpError(f"Failed to get ethtool info: {e}")
     def get_vnic_data(self, acli):
         res = acli.execute(f"nuclei -output_format json vm.get {self.name}")
         
@@ -645,7 +672,7 @@ def start_iperf_test(vm_obj_1,vm_obj_2,udp):
     except Exception as e:
         ERROR(f"Failed to stop iperf server: {e}")
     vm_obj_2.ssh_obj.start_iperf_server(udp)
-    result = vm_obj_1.ssh_obj.run_iperf_client(vm_obj_2.snic_ip,udp,duration=300)
+    result = vm_obj_1.ssh_obj.run_iperf_client(vm_obj_2.snic_ip,udp,duration=5)
     INFO(result)
     # Display the results
     print(f"iperf test results from {vm_obj_1.snic_ip} to {vm_obj_2.snic_ip}:\n{result}")
@@ -658,13 +685,68 @@ def extract_names(log_content):
     names = name_pattern.findall(log_content)
     
     return names
-def vm_creation_and_network_creation(setup,host_data):
+def firmware_check(setup=None,host_ip=None,port=None,vf=False,driver_version=None,fw_version=None):
+    if not vf:
+        fw_version=setup.AHV_nic_port_map[host_ip][port]['firmware_version'][0]
+        driver_version=setup.AHV_nic_port_map[host_ip][port]['driver_version'].split(":")
+        if setup.AHV_nic_port_map[host_ip][port].get("nic_type")=="ConnectX-6 Dx":
+            min_firm="22.43.2026 (MT_0000000437)"
+            min_driver="mlx5_core:24.10-1.1.4"
+        elif setup.AHV_nic_port_map[host_ip][port].get("nic_type")=="ConnectX-6 Lx":
+            min_firm="26.43.2026 (MT_0000000437)"
+            min_driver="mlx5_core:24.10-1.1.4"
+        else:
+            raise ExpError(f"NIC type is not supported for firmware check, only ConnectX-6 Lx and Dx are supported")
+    else:
+        min_firm="22.43.2026 (MT_0000000437)"
+        min_driver="mlx5_core:24.10-1.1.4"
+        if (not fw_version) or (not driver_version):
+            raise ExpError("Firmware and driver version are not provided for VF")
+        
+    
+    # if len(setup.AHV_nic_port_map[host_ip][port]["supported_capabilities"])>0:
+    
+    # INFO(setup.AHV_nic_port_map[host_ip][port]["firmware_version"][0])
+    
+    min_firm=min_firm.split(" ")
+    if (Version.parse(fw_version)<Version.parse(min_firm[0])):
+        # setup.AHV_nic_port_map[i].pop(port)
+        ERROR(f"Minimum firmware version required is {min_firm}. Current firmware version is {setup.AHV_nic_port_map[host_ip][port]['firmware_version']} for port {port} in {host_ip}.")
+        raise ExpError(f"Minimum firmware version required is {min_firm}. Current firmware version is {setup.AHV_nic_port_map[host_ip][port]['firmware_version']}.If you would still like to run it use --skip_fw_check flag for port {port} in {host_ip}")
+    DEBUG("firware version satisfied")
+    # parsed=LooseVersion(driver_version[1])
+    # INFO(parsed)
+    min_driver=min_driver.split(":")
+    driver_version[1]= driver_version[1].replace('-', '.0-')
+    min_driver[1]= min_driver[1].replace('-', '.0-')
+    # DEBUG(driver_version)
+    # DEBUG(min_driver)
+    if (Version.parse(driver_version[1])<Version.parse(min_driver[1])) and driver_version[0]==min_driver[0]:
+        # setup.AHV_nic_port_map[].pop(port)
+        ERROR(f"Minimum driver version required is {min_driver}. Current driver version is {driver_version[0]} for port {port} in {host_ip}.")
+        raise ExpError(f"Minimum driver version required is {min_driver}. Current driver version is {driver_version[0]}.If you would still like to run it use --skip_fw_check flag for port {port} in {host_ip}")
+    DEBUG("driver version satisfied")
+    
+    return True
+    # INFO("{0} firmware version is {1}".format(port,))
+    # else:
+    #     raise ExpError(f"NIC doesn't support DPOFFLOAD")
+def vm_creation_and_network_creation(setup,host_data,skip_driver=False):
     global PARTITION
     # config=host_data['cluster_host_config']
     # def_config=host_data['default_config']
     nic_config=host_data["nic_config"]
     vlan_config=host_data["vlan_config"]
     nic_vf_data=None
+    STEP("Firmware and driver version check of Physical NIC")
+    host_ip=nic_config['host_ip']
+    port=nic_config['port']
+    if len(setup.AHV_nic_port_map[host_ip][port]["supported_capabilities"])>0:
+        if not skip_driver:
+            firmware_check(setup=setup,host_ip=host_ip,port=port)
+            STEP("Firmware and driver version check of Virtual NIC: PASS")
+    else:
+        raise ExpError(f"NIC doesn't support DPOFFLOAD")
     bridge=nic_config.get("bridge",False)
     ahv_obj=setup.AHV_obj_dict[nic_config['host_ip']]
     INFO("Creatig VFs and Network")
@@ -678,6 +760,8 @@ def vm_creation_and_network_creation(setup,host_data):
     except Exception as e:
         ERROR(f"Failed to create bridge on AHV: {e}")
     vm_names=["vm1","vm2"]
+    vm_names = [vm + "_" + host_ip + "_" + port for vm in vm_names]
+    INFO(vm_names)
     # partition=False
     if nic_config.get('port') and nic_config.get("host_ip"):
         res=cvm_obj.execute(f"/home/nutanix/tmp/partition.py show {nic_config['host_ip']} {nic_config['port']}")
@@ -751,6 +835,7 @@ def vm_creation_and_network_creation(setup,host_data):
             raise ExpError(f"Failed to assign VM to host {nic_config['host_ip']}")
     INFO("waiting for IPs to be assigned")
     time.sleep(60)
+
 def test_traffic(setup,host_data,skip_deletion_of_setup=False):
     nic_config=host_data["nic_config"]
     vlan_config=host_data["vlan_config"]
@@ -758,6 +843,7 @@ def test_traffic(setup,host_data,skip_deletion_of_setup=False):
     bridge=nic_config.get("bridge",False)
     ahv_obj=setup.AHV_obj_dict[nic_config['host_ip']]
     vm_names=["vm1","vm2"]
+    vm_names = [vm + "_" + nic_config['host_ip'] + "_" + nic_config['port'] for vm in vm_names]
     vm_data_dict=parse_vm_output(setup.execute("acli vm.list")["stdout"])
     # INFO(vm_data_dict)
     vm_dict ={name:vm_data_dict[name] for name in vm_names if name in vm_data_dict}
@@ -769,13 +855,16 @@ def test_traffic(setup,host_data,skip_deletion_of_setup=False):
         vm_obj.ssh_setup(ahv_obj)
         vm_obj.get_interface_data()
         vm_obj.find_smartnic_interface()
+        vm_obj.get_sNIC_ethtool_info()
     # vm_obj_dict["vm1"].set_ip_for_smartnic("10.10.20.10")
     # vm_obj_dict["vm2"].set_ip_for_smartnic("10.10.20.20")
     
     # vm_obj_dict["vm1"].ssh_obj.execute("ifconfig")
     # vm_obj_dict["vm2"].ssh_obj.execute("ifconfig")
-        
-    
+    STEP("FW and driver version check for VM Image START")
+    for vm_obj in vm_obj_dict.values():
+        firmware_check(vf=True,driver_version=vm_obj.driver_version,fw_version=vm_obj.firmware_version)
+    STEP("FW and driver version check for VM Image: PASS")
     INFO(vm_dict)
     # INFO("Creatig VFs and Network")
     # ahv_obj.execute("ovs-vsctl set Open_vSwitch . other_config:hw-offload=true")
@@ -1073,8 +1162,8 @@ if __name__ == "__main__":
     host_config = load_config(host_path)['cluster_host_config']
     cvm_obj=CVM(host_config["ips"]['pe_ip'])
     vm_image_creation(cvm_obj,host_data)
-    nic_data(cvm_obj,args.skip_fw_check)
+    nic_data(cvm_obj)
     # nic_config=host_config["nic_config"]
     if not args.skip_setup:
-        vm_creation_and_network_creation(cvm_obj,host_config)
+        vm_creation_and_network_creation(cvm_obj,host_config,args.skip_fw_check)
     test_traffic(cvm_obj,host_config,args.skip_teardown)    
