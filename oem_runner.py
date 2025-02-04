@@ -695,8 +695,8 @@ def firmware_check(setup=None,host_ip=None,port=None,vf=False,driver_version=Non
         elif setup.AHV_nic_port_map[host_ip][port].get("nic_type")=="ConnectX-6 Lx":
             min_firm="26.43.2026 (MT_0000000437)"
             min_driver="mlx5_core:24.10-1.1.4"
-        else:
-            raise ExpError(f"NIC type is not supported for firmware check, only ConnectX-6 Lx and Dx are supported")
+        # else:
+        #     raise ExpError(f"NIC type is not supported for firmware check, only ConnectX-6 Lx and Dx are supported")
     else:
         min_firm="22.43.2026 (MT_0000000437)"
         min_driver="mlx5_core:24.10-1.1.4"
@@ -741,12 +741,12 @@ def vm_creation_and_network_creation(setup,host_data,skip_driver=False):
     STEP("Firmware and driver version check of Physical NIC")
     host_ip=nic_config['host_ip']
     port=nic_config['port']
-    if len(setup.AHV_nic_port_map[host_ip][port]["supported_capabilities"])>0:
+    if len(setup.AHV_nic_port_map[host_ip][port]["supported_capabilities"])>0 and setup.AHV_nic_port_map[host_ip][port]['nic_type']!="Unknown":
         if not skip_driver:
             firmware_check(setup=setup,host_ip=host_ip,port=port)
             STEP("Firmware and driver version check of Virtual NIC: PASS")
     else:
-        raise ExpError(f"NIC doesn't support DPOFFLOAD")
+        raise ExpError(f"NIC doesn't support DPOFFLOAD, only ConnectX-6 Lx and Dx are supported")
     bridge=nic_config.get("bridge",False)
     ahv_obj=setup.AHV_obj_dict[nic_config['host_ip']]
     INFO("Creatig VFs and Network")
