@@ -8,6 +8,7 @@ from framework.flow_helpers.offload import *
 
 from framework.flow_helpers.net_gen import *
 from collections import Counter
+import random
 import time
 import itertools
 import re
@@ -21,7 +22,7 @@ PARTITION=False
 def load_config(config_file):
     with open(config_file, 'r') as file:
         return json.load(file)
-def start_tcpdump(vm_obj, interface, output_file,pac_type="icmp",packet_count=10):
+def start_tcpdump(vm_obj, interface, output_file,pac_type="icmp",packet_count=200):
     # cmd = f"tcpdump -i {interface} -w {output_file} & echo $! > /tmp/tcpdump.pid"
     # if pac_type:
     cmd=f"nohup tcpdump -i {interface} -w {output_file} -c {packet_count} {pac_type} > /dev/null 2>&1"
@@ -672,7 +673,7 @@ def start_iperf_test(vm_obj_1,vm_obj_2,udp):
     except Exception as e:
         ERROR(f"Failed to stop iperf server: {e}")
     vm_obj_2.ssh_obj.start_iperf_server(udp)
-    result = vm_obj_1.ssh_obj.run_iperf_client(vm_obj_2.snic_ip,udp,duration=5)
+    result = vm_obj_1.ssh_obj.run_iperf_client(vm_obj_2.snic_ip,udp,duration=300)
     INFO(result)
     # Display the results
     print(f"iperf test results from {vm_obj_1.snic_ip} to {vm_obj_2.snic_ip}:\n{result}")
@@ -731,6 +732,47 @@ def firmware_check(setup=None,host_ip=None,port=None,vf=False,driver_version=Non
     # INFO("{0} firmware version is {1}".format(port,))
     # else:
     #     raise ExpError(f"NIC doesn't support DPOFFLOAD")
+def port_selection(setup,host_ip,port):
+    val1=(host_ip=="")
+    val2=(port=="")
+    if val1:
+       hosts = list(setup.AHV_nic_port_map.keys())
+       hosts=random.sample(hosts,len(hosts))
+       INFO(hosts)
+    else:
+        hosts=[host_ip]
+            
+    
+    for i in hosts:
+        if val2:
+            ports = list(setup.AHV_nic_port_map[i].keys())
+            ports=random.sample(ports,len(ports))
+            INFO(ports)
+        else:
+            ports=[port]
+        res=setup.AHV_obj_dict[i].execute("ovs-appctl bond/show")['stdout']
+        for j in ports:
+            if j not in res:
+                ports.remove(j)
+        for j in ports:
+            if len(setup.AHV_nic_port_map[i][j]["supported_capabilities"])>0 and setup.AHV_nic_port_map[i][j]['nic_type']!="Unknown":
+                try:
+                    firmware_check(setup=setup,host_ip=i,port=j)
+                    host_ip=i
+                    port=j
+                    break
+                except ExpError as e:
+                    continue
+        if host_ip!="" and port!="":
+            break
+    if host_ip=="" and port=="":
+        raise ExpError("No NIC found with DPOFFLOAD support")
+    elif host_ip=="":
+        raise ExpError("No NIC found with DPOFFLOAD support with port {port} on the hosts")
+    elif port=="":
+        raise ExpError("No NIC found with DPOFFLOAD support on host {host_ip}")
+        
+    return host_ip,port
 def vm_creation_and_network_creation(setup,host_data,skip_driver=False):
     global PARTITION
     # config=host_data['cluster_host_config']
@@ -739,14 +781,22 @@ def vm_creation_and_network_creation(setup,host_data,skip_driver=False):
     vlan_config=host_data["vlan_config"]
     nic_vf_data=None
     STEP("Firmware and driver version check of Physical NIC")
-    host_ip=nic_config['host_ip']
-    port=nic_config['port']
-    if len(setup.AHV_nic_port_map[host_ip][port]["supported_capabilities"])>0 and setup.AHV_nic_port_map[host_ip][port]['nic_type']!="Unknown":
-        if not skip_driver:
-            firmware_check(setup=setup,host_ip=host_ip,port=port)
-            STEP("Firmware and driver version check of Virtual NIC: PASS")
+    # host_ip=nic_config['host_ip']
+    # port=nic_config['port']
+    if nic_config['host_ip']=="" or nic_config['port']=="":
+        STEP("Selecting Port with DPOFFLOAD support")
+        nic_config['host_ip'],nic_config['port']=port_selection(setup,nic_config['host_ip'],nic_config['port'])
+        INFO(f"Selected port {nic_config['port']} on host {nic_config['host_ip']}")
     else:
-        raise ExpError(f"NIC doesn't support DPOFFLOAD, only ConnectX-6 Lx and Dx are supported")
+        res=setup.AHV_obj_dict[nic_config['host_ip']].execute("ovs-appctl bond/show")['stdout']
+        if nic_config['port'] not in res:
+            raise ExpError(f"Port {nic_config['port']} not found in br0 bond of host {nic_config['host_ip']}")
+        if len(setup.AHV_nic_port_map[nic_config['host_ip']][nic_config['port']]["supported_capabilities"])>0 and setup.AHV_nic_port_map[nic_config['host_ip']][nic_config['port']]['nic_type']!="Unknown":
+            if not skip_driver:
+                firmware_check(setup=setup,host_ip=nic_config['host_ip'],port=nic_config['port'])
+                STEP("Firmware and driver version check of Virtual NIC: PASS")
+        else:
+            raise ExpError(f"NIC doesn't support DPOFFLOAD, only ConnectX-6 Lx and Dx are supported")
     bridge=nic_config.get("bridge",False)
     ahv_obj=setup.AHV_obj_dict[nic_config['host_ip']]
     INFO("Creatig VFs and Network")
@@ -759,6 +809,8 @@ def vm_creation_and_network_creation(setup,host_data,skip_driver=False):
         ahv_obj.execute(f"echo switchdev > /sys/class/net/{nic_config['port']}/compat/devlink/mode")
     except Exception as e:
         ERROR(f"Failed to create bridge on AHV: {e}")
+    host_ip=nic_config['host_ip']
+    port=nic_config['port']
     vm_names=["vm1","vm2"]
     vm_names = [vm + "_" + host_ip + "_" + port for vm in vm_names]
     INFO(vm_names)
@@ -934,10 +986,10 @@ def test_traffic(setup,host_data,skip_deletion_of_setup=False):
     #     for vf2 in VFs[vm_dict["vm2"]]:
     # vm_obj_dict["vm1"].ssh_obj.execute("ifconfig")
     # vm_obj_dict["vm2"].ssh_obj.execute("ifconfig")
-    # ahv_obj.execute(f"ovs-ofctl add-flow {bridge} \"in_port={vm_obj_dict['vm1'].vf_rep},actions=output:{vm_obj_dict['vm2'].vf_rep}\"")
-    ahv_obj.execute(f"ovs-ofctl add-flow {bridge} \"in_port={vm_obj_dict['vm1'].vf_rep},eth_src={vm_obj_dict['vm1'].smartnic_interface_data.mac_address},eth_dst={vm_obj_dict['vm2'].smartnic_interface_data.mac_address},eth_type=0x0800,nw_src=192.168.1.10/32,nw_dst=192.168.1.20/32,actions=output:{vm_obj_dict['vm2'].vf_rep}\"")
-    ahv_obj.execute(f"ovs-ofctl add-flow {bridge} \"in_port={vm_obj_dict['vm2'].vf_rep},eth_src={vm_obj_dict['vm2'].smartnic_interface_data.mac_address},eth_dst={vm_obj_dict['vm1'].smartnic_interface_data.mac_address},eth_type=0x0800,nw_src=192.168.1.20/32,nw_dst=192.168.1.10/32,actions=output:{vm_obj_dict['vm1'].vf_rep}\"")
-    # ahv_obj.execute(f"ovs-ofctl add-flow {bridge} \"in_port={vm_obj_dict['vm2'].vf_rep},actions=output:{vm_obj_dict['vm1'].vf_rep}\"")
+    # ahv_obj.execute(f"ovs-ofctl add-flow {bridge} \"in_port={vm_obj_dict[vm_names[0]].vf_rep},actions=output:{vm_obj_dict[vm_names[1]].vf_rep}\"")
+    ahv_obj.execute(f"ovs-ofctl add-flow {bridge} \"in_port={vm_obj_dict[vm_names[0]].vf_rep},eth_src={vm_obj_dict[vm_names[0]].smartnic_interface_data.mac_address},eth_dst={vm_obj_dict[vm_names[1]].smartnic_interface_data.mac_address},eth_type=0x0800,nw_src=192.168.1.10/32,nw_dst=192.168.1.20/32,actions=output:{vm_obj_dict[vm_names[1]].vf_rep}\"")
+    ahv_obj.execute(f"ovs-ofctl add-flow {bridge} \"in_port={vm_obj_dict[vm_names[1]].vf_rep},eth_src={vm_obj_dict[vm_names[1]].smartnic_interface_data.mac_address},eth_dst={vm_obj_dict[vm_names[0]].smartnic_interface_data.mac_address},eth_type=0x0800,nw_src=192.168.1.20/32,nw_dst=192.168.1.10/32,actions=output:{vm_obj_dict[vm_names[0]].vf_rep}\"")
+    # ahv_obj.execute(f"ovs-ofctl add-flow {bridge} \"in_port={vm_obj_dict[vm_names[1]].vf_rep},actions=output:{vm_obj_dict[vm_names[0]].vf_rep}\"")
     # start_continuous_ping(vm_obj_dict["vm1"].ip,vm_obj_dict["vm2"].ip,vm_obj_dict["vm1"].smartnic_interface_data.name)
     # vm_obj_dict["vm1"].ssh_obj.execute("ifconfig")
     # vm_obj_dict["vm2"].ssh_obj.execute("ifconfig")
@@ -964,42 +1016,42 @@ def test_traffic(setup,host_data,skip_deletion_of_setup=False):
             ahv_obj.execute(f"ovs-appctl bond/set-active-member br0-up {nic_config['port']}")
         except Exception as e:
             raise ExpError(f"Failed to set active member: {e}")
-    # ahv_obj.execute(f"tc qdisc del dev {vm_obj_dict['vm1'].vf_rep} ingress")
-    # ahv_obj.execute(f"tc qdisc del dev {vm_obj_dict['vm2'].vf_rep} ingress")
-    # ahv_obj.execute(f"tc qdisc add dev {vm_obj_dict['vm1'].vf_rep} clsact")
-    # ahv_obj.execute(f"tc qdisc add dev {vm_obj_dict['vm2'].vf_rep} clsact")
+    # ahv_obj.execute(f"tc qdisc del dev {vm_obj_dict[vm_names[0]].vf_rep} ingress")
+    # ahv_obj.execute(f"tc qdisc del dev {vm_obj_dict[vm_names[1]].vf_rep} ingress")
+    # ahv_obj.execute(f"tc qdisc add dev {vm_obj_dict[vm_names[0]].vf_rep} clsact")
+    # ahv_obj.execute(f"tc qdisc add dev {vm_obj_dict[vm_names[1]].vf_rep} clsact")
     
-    vm_obj_dict["vm1"].ssh_obj.execute("ifconfig")
-    vm_obj_dict["vm2"].ssh_obj.execute("ifconfig")
+    vm_obj_dict[vm_names[0]].ssh_obj.execute("ifconfig")
+    vm_obj_dict[vm_names[1]].ssh_obj.execute("ifconfig")
     # import pdb;pdb.set_trace()
-    vm_obj_dict["vm1"].set_ip_for_smartnic("192.168.1.10","192.168.1.0")
-    vm_obj_dict["vm2"].set_ip_for_smartnic("192.168.1.20","192.168.1.0")
-    vm_obj_dict["vm1"].ssh_obj.ping_an_ip(vm_obj_dict["vm2"].snic_ip,interface=vm_obj_dict["vm1"].smartnic_interface_data.name)
-    # vm_obj_dict["vm1"].ssh_obj.execute("ifconfig")
-    # vm_obj_dict["vm2"].ssh_obj.execute("ifconfig")
+    vm_obj_dict[vm_names[0]].set_ip_for_smartnic("192.168.1.10","192.168.1.0")
+    vm_obj_dict[vm_names[1]].set_ip_for_smartnic("192.168.1.20","192.168.1.0")
+    vm_obj_dict[vm_names[0]].ssh_obj.ping_an_ip(vm_obj_dict[vm_names[1]].snic_ip,interface=vm_obj_dict[vm_names[0]].smartnic_interface_data.name)
+    # vm_obj_dict[vm_names[0]].ssh_obj.execute("ifconfig")
+    # vm_obj_dict[vm_names[1]].ssh_obj.execute("ifconfig")
     time.sleep(4)
     flows=parse_ahv_port_flows(ahv_obj)
     INFO(flows)
-    tc_ping_filters_vf1_ingress = get_tc_filter_details(ahv_obj, vm_obj_dict['vm1'].vf_rep)
-    # tc_ping_filters_vf1_egress = get_tc_filter_details(ahv_obj, vm_obj_dict['vm1'].vf_rep,type="egress")
-    tc_ping_filters_vf2_ingress = get_tc_filter_details(ahv_obj, vm_obj_dict['vm2'].vf_rep)
-    # tc_ping_filters_vf2_egress = get_tc_filter_details(ahv_obj, vm_obj_dict['vm2'].vf_rep,type="egress")
+    tc_ping_filters_vf1_ingress = get_tc_filter_details(ahv_obj, vm_obj_dict[vm_names[0]].vf_rep)
+    # tc_ping_filters_vf1_egress = get_tc_filter_details(ahv_obj, vm_obj_dict[vm_names[0]].vf_rep,type="egress")
+    tc_ping_filters_vf2_ingress = get_tc_filter_details(ahv_obj, vm_obj_dict[vm_names[1]].vf_rep)
+    # tc_ping_filters_vf2_egress = get_tc_filter_details(ahv_obj, vm_obj_dict[vm_names[1]].vf_rep,type="egress")
     tc_ping_filters_br0_egress = get_tc_filter_details(ahv_obj, bridge,type="egress")
-    stop_tcpdump(ahv_obj, vm_obj_dict['vm1'].vf_rep)
-    stop_tcpdump(ahv_obj, vm_obj_dict['vm2'].vf_rep)
+    stop_tcpdump(ahv_obj, vm_obj_dict[vm_names[0]].vf_rep)
+    stop_tcpdump(ahv_obj, vm_obj_dict[vm_names[1]].vf_rep)
     STEP("tc filters of ping traffic:")
-    STEP(f"tc filters of ping traffic of {vm_obj_dict['vm1'].vf_rep} ingress")
+    STEP(f"tc filters of ping traffic of {vm_obj_dict[vm_names[0]].vf_rep} ingress")
     INFO(tc_ping_filters_vf1_ingress)
-    # STEP(f"tc filters of ping traffic of {vm_obj_dict['vm1'].vf_rep} egress")
+    # STEP(f"tc filters of ping traffic of {vm_obj_dict[vm_names[0]].vf_rep} egress")
     # INFO(tc_ping_filters_vf1_egress)
-    STEP(f"tc filters of ping traffic of {vm_obj_dict['vm2'].vf_rep} ingress")
+    STEP(f"tc filters of ping traffic of {vm_obj_dict[vm_names[1]].vf_rep} ingress")
     INFO(tc_ping_filters_vf2_ingress)
     STEP(f"tc filters of ping traffic of {bridge} egress")
     INFO(tc_ping_filters_br0_egress)
-    # STEP(f"tc filters of ping traffic of {vm_obj_dict['vm2'].vf_rep} egress")
+    # STEP(f"tc filters of ping traffic of {vm_obj_dict[vm_names[1]].vf_rep} egress")
     # INFO(tc_ping_filters_vf2_egress)
     
-    if not check_flows(flows,vm_obj_dict['vm1'].vf_rep,vm_obj_dict['vm2'].vf_rep):
+    if not check_flows(flows,vm_obj_dict[vm_names[0]].vf_rep,vm_obj_dict[vm_names[1]].vf_rep):
         STEP("Verification of ping offloaded flows: Fail")
         raise ExpError("Failed to add flows")
     else:
@@ -1007,103 +1059,106 @@ def test_traffic(setup,host_data,skip_deletion_of_setup=False):
     
     
     
-    if not check_flows(flows,vm_obj_dict['vm1'].vf_rep,vm_obj_dict['vm2'].vf_rep,packet_count=9):
+    if not check_flows(flows,vm_obj_dict[vm_names[0]].vf_rep,vm_obj_dict[vm_names[1]].vf_rep,packet_count=9):
         ERROR("Failed to verify packet count using offloaded flows")
         STEP("Verification of packet count using offloaded flows: Fail")
     else:
         STEP("Verification of packet count using offloaded flows: Pass")
-    icmp_packet_count1 = count_packets(ahv_obj, "/tmp/tcpdump_output1.pcap", vm_obj_dict["vm1"].snic_ip, vm_obj_dict["vm2"].snic_ip)
+    icmp_packet_count1 = count_packets(ahv_obj, "/tmp/tcpdump_output1.pcap", vm_obj_dict[vm_names[0]].snic_ip, vm_obj_dict[vm_names[1]].snic_ip)
     INFO(f"ICMP packet count on vf1: {icmp_packet_count1}")
-    icmp_packet_count2 = count_packets(ahv_obj, "/tmp/tcpdump_output2.pcap", vm_obj_dict["vm2"].snic_ip, vm_obj_dict["vm1"].snic_ip)
+    icmp_packet_count2 = count_packets(ahv_obj, "/tmp/tcpdump_output2.pcap", vm_obj_dict[vm_names[1]].snic_ip, vm_obj_dict[vm_names[0]].snic_ip)
     INFO(f"ICMP packet count on vf2: {icmp_packet_count2}")
     if icmp_packet_count1 <= 1 and icmp_packet_count2 <= 1:
         STEP("Verification of packet count: Pass")
     else:
         ERROR("ICMP packet count mismatch")
         STEP("Verification of packet count: Fail")
-    # vm_obj_dict["vm1"].ssh_obj.ping_an_ip(vm_obj_dict["vm2"].snic_ip,interface=vm_obj_dict["vm1"].smartnic_interface_data.name)
+    # vm_obj_dict[vm_names[0]].ssh_obj.ping_an_ip(vm_obj_dict[vm_names[1]].snic_ip,interface=vm_obj_dict[vm_names[0]].smartnic_interface_data.name)
     # time.sleep(2)
     time.sleep(15)
     STEP("iperf test")
     start_tcpdump(ahv_obj, vf_list[0].vf_rep, "/tmp/tcpdump_output1.pcap",pac_type="tcp")
     start_tcpdump(ahv_obj, vf_list[1].vf_rep, "/tmp/tcpdump_output2.pcap",pac_type="tcp")
-    result=parse_iperf_output(start_iperf_test(vm_obj_dict["vm1"],vm_obj_dict["vm2"],udp=False))
+    result=parse_iperf_output(start_iperf_test(vm_obj_dict[vm_names[0]],vm_obj_dict[vm_names[1]],udp=False))
     INFO(result)
-    tc_filters_vf1_ingress_tcp = get_tc_filter_details(ahv_obj, vm_obj_dict['vm1'].vf_rep)
-    tc_filters_vf2_ingress_tcp = get_tc_filter_details(ahv_obj, vm_obj_dict['vm2'].vf_rep)
+    tc_filters_vf1_ingress_tcp = get_tc_filter_details(ahv_obj, vm_obj_dict[vm_names[0]].vf_rep)
+    tc_filters_vf2_ingress_tcp = get_tc_filter_details(ahv_obj, vm_obj_dict[vm_names[1]].vf_rep)
     tc_filters_br0_egress_tcp=get_tc_filter_details(ahv_obj, bridge,type="egress")
-    # tc_tcp_filters_vf1_egress = get_tc_filter_details(ahv_obj, vm_obj_dict['vm1'].vf_rep,type="egress")
+    # tc_tcp_filters_vf1_egress = get_tc_filter_details(ahv_obj, vm_obj_dict[vm_names[0]].vf_rep,type="egress")
     INFO("waiting for the tc filters of tcp to get erased")
     flows=parse_ahv_port_flows(ahv_obj)
     INFO(flows)
-    stop_tcpdump(ahv_obj, vm_obj_dict['vm1'].vf_rep)
-    stop_tcpdump(ahv_obj, vm_obj_dict['vm2'].vf_rep)
-    if not check_flows(flows,vm_obj_dict['vm1'].vf_rep,vm_obj_dict['vm2'].vf_rep):
+    stop_tcpdump(ahv_obj, vm_obj_dict[vm_names[0]].vf_rep)
+    stop_tcpdump(ahv_obj, vm_obj_dict[vm_names[1]].vf_rep)
+    if not check_flows(flows,vm_obj_dict[vm_names[0]].vf_rep,vm_obj_dict[vm_names[1]].vf_rep):
         STEP("Verification of TCP offloaded flows: Fail")
         raise ExpError("Failed to add flows")
     else:
         STEP("Verification of TCP offloaded flows: Pass")
     # time.sleep(10)
-    tcp_packet_count1 = count_packets(ahv_obj, "/tmp/tcpdump_output1.pcap", vm_obj_dict["vm1"].snic_ip, vm_obj_dict["vm2"].snic_ip,pac_type="tcp")
+    STEP("TCPDump for TCP packets")
+
+    tcp_packet_count1 = count_packets(ahv_obj, "/tmp/tcpdump_output1.pcap", vm_obj_dict[vm_names[0]].snic_ip, vm_obj_dict[vm_names[1]].snic_ip,pac_type="tcp")
     INFO(f"TCP packets on vf rep 1: {tcp_packet_count1}")
-    tcp_packet_count2 = count_packets(ahv_obj, "/tmp/tcpdump_output2.pcap", vm_obj_dict["vm2"].snic_ip, vm_obj_dict["vm1"].snic_ip,pac_type="tcp")
+    tcp_packet_count2 = count_packets(ahv_obj, "/tmp/tcpdump_output2.pcap", vm_obj_dict[vm_names[1]].snic_ip, vm_obj_dict[vm_names[0]].snic_ip,pac_type="tcp")
     INFO(f"TCP packets on vf rep 2: {tcp_packet_count2}")
     time.sleep(15)
     start_tcpdump(ahv_obj, vf_list[0].vf_rep, "/tmp/tcpdump_output1.pcap",pac_type="udp")
     start_tcpdump(ahv_obj, vf_list[1].vf_rep, "/tmp/tcpdump_output2.pcap",pac_type="udp")
-    result=parse_iperf_output(start_iperf_test(vm_obj_dict["vm1"],vm_obj_dict["vm2"],udp=True))
+    result=parse_iperf_output(start_iperf_test(vm_obj_dict[vm_names[0]],vm_obj_dict[vm_names[1]],udp=True))
     INFO(result)
-    tc_filters_vf1_ingress_udp = get_tc_filter_details(ahv_obj, vm_obj_dict['vm1'].vf_rep)
-    tc_filters_vf2_ingress_udp = get_tc_filter_details(ahv_obj, vm_obj_dict['vm2'].vf_rep)
+    tc_filters_vf1_ingress_udp = get_tc_filter_details(ahv_obj, vm_obj_dict[vm_names[0]].vf_rep)
+    tc_filters_vf2_ingress_udp = get_tc_filter_details(ahv_obj, vm_obj_dict[vm_names[1]].vf_rep)
     tc_filters_br0_egress_udp=get_tc_filter_details(ahv_obj, bridge,type="egress")
     flows=parse_ahv_port_flows(ahv_obj)
     INFO(flows)
-    stop_tcpdump(ahv_obj, vm_obj_dict['vm1'].vf_rep)
-    stop_tcpdump(ahv_obj, vm_obj_dict['vm2'].vf_rep)
-    if not check_flows(flows,vm_obj_dict['vm1'].vf_rep,vm_obj_dict['vm2'].vf_rep):
+    stop_tcpdump(ahv_obj, vm_obj_dict[vm_names[0]].vf_rep)
+    stop_tcpdump(ahv_obj, vm_obj_dict[vm_names[1]].vf_rep)
+    if not check_flows(flows,vm_obj_dict[vm_names[0]].vf_rep,vm_obj_dict[vm_names[1]].vf_rep):
         STEP("Verification of UDP offloaded flows: Fail")
         raise ExpError("Failed to add flows")
     else:
         STEP("Verification of UDP offloaded flows: Pass")
-    udp_packet_count1 = count_packets(ahv_obj, "/tmp/tcpdump_output1.pcap", vm_obj_dict["vm1"].snic_ip, vm_obj_dict["vm2"].snic_ip,pac_type="udp")
-    INFO(f"UDP packets on vf rep 1: {tcp_packet_count1}")
-    udp_packet_count2 = count_packets(ahv_obj, "/tmp/tcpdump_output2.pcap", vm_obj_dict["vm2"].snic_ip, vm_obj_dict["vm1"].snic_ip,pac_type="udp")
-    INFO(f"UDP packets on vf rep 2: {tcp_packet_count2}")
-    # tc_tcp_filters_vf2_egress = get_tc_filter_details(ahv_obj, vm_obj_dict['vm2'].vf_rep,type="egress")
+    STEP("TCPDump for UDP packets")
+    udp_packet_count1 = count_packets(ahv_obj, "/tmp/tcpdump_output1.pcap", vm_obj_dict[vm_names[0]].snic_ip, vm_obj_dict[vm_names[1]].snic_ip,pac_type="udp")
+    INFO(f"UDP packets on vf rep 1: {udp_packet_count1}")
+    udp_packet_count2 = count_packets(ahv_obj, "/tmp/tcpdump_output2.pcap", vm_obj_dict[vm_names[1]].snic_ip, vm_obj_dict[vm_names[0]].snic_ip,pac_type="udp")
+    INFO(f"UDP packets on vf rep 2: {udp_packet_count2}")
+    # tc_tcp_filters_vf2_egress = get_tc_filter_details(ahv_obj, vm_obj_dict[vm_names[1]].vf_rep,type="egress")
     
     STEP(" iperf test: Ran")
     
     STEP("tc filters of iperf traffic:")
-    STEP(f"tc filters of tcp iperf traffic of {vm_obj_dict['vm1'].vf_rep} ingress")
+    STEP(f"tc filters of tcp iperf traffic of {vm_obj_dict[vm_names[0]].vf_rep} ingress")
     INFO(tc_filters_vf1_ingress_tcp)
-    STEP(f"tc filters of tcp iperf traffic of {vm_obj_dict['vm2'].vf_rep} ingress")
+    STEP(f"tc filters of tcp iperf traffic of {vm_obj_dict[vm_names[1]].vf_rep} ingress")
     INFO(tc_filters_vf2_ingress_tcp)
     STEP(f"tc filters of tcp iperf traffic of {bridge} egress")
     INFO(tc_filters_br0_egress_tcp)
-    # STEP(f"tc filters of iperf traffic of {vm_obj_dict['vm1'].vf_rep} egress")
+    # STEP(f"tc filters of iperf traffic of {vm_obj_dict[vm_names[0]].vf_rep} egress")
     # INFO(tc_tcp_filters_vf1_egress)
-    STEP(f"tc filters of udp iperf traffic of {vm_obj_dict['vm1'].vf_rep} ingress")
+    STEP(f"tc filters of udp iperf traffic of {vm_obj_dict[vm_names[0]].vf_rep} ingress")
     INFO(tc_filters_vf1_ingress_udp)
-    STEP(f"tc filters of udp iperf traffic of {vm_obj_dict['vm2'].vf_rep} ingress")
+    STEP(f"tc filters of udp iperf traffic of {vm_obj_dict[vm_names[1]].vf_rep} ingress")
     INFO(tc_filters_vf2_ingress_udp)
     STEP(f"tc filters of udp iperf traffic of {bridge} egress")
     INFO(tc_filters_br0_egress_udp)
     
-    # STEP(f"tc filters of iperf traffic of {vm_obj_dict['vm2'].vf_rep} egress")
+    # STEP(f"tc filters of iperf traffic of {vm_obj_dict[vm_names[1]].vf_rep} egress")
     # INFO(tc_tcp_filters_vf2_egress)
     # tc_ping_filters_vf1_egress=json.loads(tc_ping_filters_vf1_egress)
     tc_ping_filters_vf1_ingress=json.loads(tc_ping_filters_vf1_ingress)
     
     # tc_ping_filters_vf2_egress=json.loads(tc_ping_filters_vf2_egress)
     tc_ping_filters_vf2_ingress=json.loads(tc_ping_filters_vf2_ingress)
-    if check_tc_filters(tc_ping_filters_vf1_ingress,vm_obj_dict['vm2'].vf_rep) and check_tc_filters((tc_ping_filters_vf2_ingress),vm_obj_dict['vm1'].vf_rep):
+    if check_tc_filters(tc_ping_filters_vf1_ingress,vm_obj_dict[vm_names[1]].vf_rep) and check_tc_filters((tc_ping_filters_vf2_ingress),vm_obj_dict[vm_names[0]].vf_rep):
         STEP("Verification of tc filters ping traffic: Pass")
     else:
         ERROR("Failed to verify tc filters")
         STEP("Verification of tc filters of ping traffic: Fail")
     if not skip_deletion_of_setup:
-        ahv_obj.execute(f"ovs-ofctl del-flows {bridge} in_port={vm_obj_dict['vm1'].vf_rep}")
-        ahv_obj.execute(f"ovs-ofctl del-flows {bridge} in_port={vm_obj_dict['vm2'].vf_rep}")
+        ahv_obj.execute(f"ovs-ofctl del-flows {bridge} in_port={vm_obj_dict[vm_names[0]].vf_rep}")
+        ahv_obj.execute(f"ovs-ofctl del-flows {bridge} in_port={vm_obj_dict[vm_names[1]].vf_rep}")
         for name,id in vm_dict.items():
             if name in vm_names:
                 run_and_check_output(setup,f"acli vm.off {name}:{id}")
