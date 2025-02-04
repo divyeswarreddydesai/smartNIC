@@ -21,11 +21,14 @@ PARTITION=False
 def load_config(config_file):
     with open(config_file, 'r') as file:
         return json.load(file)
-def start_tcpdump(vm_obj, interface, output_file):
+def start_tcpdump(vm_obj, interface, output_file,pac_type="icmp",packet_count=10):
     # cmd = f"tcpdump -i {interface} -w {output_file} & echo $! > /tmp/tcpdump.pid"
-    cmd2=f"nohup tcpdump -i {interface} -w {output_file} > /dev/null 2>&1"
+    # if pac_type:
+    cmd=f"nohup tcpdump -i {interface} -w {output_file} -c {packet_count} {pac_type} > /dev/null 2>&1"
+        
+    # cmd2=f"nohup tcpdump -i {interface} -w {output_file} -c 10 > /dev/null 2>&1"
     # vm_obj.execute(cmd)
-    vm_obj.execute(cmd2, background=True,retries=10)
+    vm_obj.execute(cmd, background=True,retries=10)
     # time.sleep(1)  # Give some time for the process to start
     
     # Check if the process is running
@@ -55,8 +58,8 @@ def stop_tcpdump(vm_obj, interface):
     except Exception as e:
         ERROR(f"Failed to stop tcpdump process for interface {interface}: {e}")
 
-def count_icmp_packets(vm_obj, pcap_file, src_ip=None, dst_ip=None):
-    filter_cmd = "icmp"
+def count_packets(vm_obj, pcap_file, src_ip=None, dst_ip=None,pac_type="icmp"):
+    filter_cmd = pac_type
     if src_ip:
         filter_cmd += f" and src {src_ip}"
     if dst_ip:
@@ -374,8 +377,14 @@ def vm_image_creation(setup,host_data):
     if vm_image_details.get('use_vm_default',False):
         vm_image_details=def_config['vm_image']
     INFO(vm_image_details) 
+    image_path=vm_image_details['vm_image_location']
     if vm_image_details.get('use_vm_default',True):
-        image_path=os.path.join(os.environ.get('PYTHONPATH'),vm_image_details['vm_image_location'])
+        if "http" not in vm_image_details['vm_image_location']:
+            image_path=os.path.join(os.environ.get('PYTHONPATH'),image_path)
+            if not os.path.isfile(image_path):
+                raise ExpError(f"File {image_path} does not exist.")
+            
+        
     else:
         image_path=vm_image_details['vm_image_location']
     if "http" not in image_path:
@@ -914,9 +923,9 @@ def test_traffic(setup,host_data,skip_deletion_of_setup=False):
         STEP("Verification of packet count using offloaded flows: Fail")
     else:
         STEP("Verification of packet count using offloaded flows: Pass")
-    icmp_packet_count1 = count_icmp_packets(ahv_obj, "/tmp/tcpdump_output1.pcap", vm_obj_dict["vm1"].snic_ip, vm_obj_dict["vm2"].snic_ip)
+    icmp_packet_count1 = count_packets(ahv_obj, "/tmp/tcpdump_output1.pcap", vm_obj_dict["vm1"].snic_ip, vm_obj_dict["vm2"].snic_ip)
     INFO(f"ICMP packet count on vf1: {icmp_packet_count1}")
-    icmp_packet_count2 = count_icmp_packets(ahv_obj, "/tmp/tcpdump_output2.pcap", vm_obj_dict["vm2"].snic_ip, vm_obj_dict["vm1"].snic_ip)
+    icmp_packet_count2 = count_packets(ahv_obj, "/tmp/tcpdump_output2.pcap", vm_obj_dict["vm2"].snic_ip, vm_obj_dict["vm1"].snic_ip)
     INFO(f"ICMP packet count on vf2: {icmp_packet_count2}")
     if icmp_packet_count1 <= 1 and icmp_packet_count2 <= 1:
         STEP("Verification of packet count: Pass")
@@ -925,8 +934,10 @@ def test_traffic(setup,host_data,skip_deletion_of_setup=False):
         STEP("Verification of packet count: Fail")
     # vm_obj_dict["vm1"].ssh_obj.ping_an_ip(vm_obj_dict["vm2"].snic_ip,interface=vm_obj_dict["vm1"].smartnic_interface_data.name)
     # time.sleep(2)
-    
+    time.sleep(15)
     STEP("iperf test")
+    start_tcpdump(ahv_obj, vf_list[0].vf_rep, "/tmp/tcpdump_output1.pcap",pac_type="tcp")
+    start_tcpdump(ahv_obj, vf_list[1].vf_rep, "/tmp/tcpdump_output2.pcap",pac_type="tcp")
     result=parse_iperf_output(start_iperf_test(vm_obj_dict["vm1"],vm_obj_dict["vm2"],udp=False))
     INFO(result)
     tc_filters_vf1_ingress_tcp = get_tc_filter_details(ahv_obj, vm_obj_dict['vm1'].vf_rep)
@@ -936,13 +947,21 @@ def test_traffic(setup,host_data,skip_deletion_of_setup=False):
     INFO("waiting for the tc filters of tcp to get erased")
     flows=parse_ahv_port_flows(ahv_obj)
     INFO(flows)
+    stop_tcpdump(ahv_obj, vm_obj_dict['vm1'].vf_rep)
+    stop_tcpdump(ahv_obj, vm_obj_dict['vm2'].vf_rep)
     if not check_flows(flows,vm_obj_dict['vm1'].vf_rep,vm_obj_dict['vm2'].vf_rep):
         STEP("Verification of TCP offloaded flows: Fail")
         raise ExpError("Failed to add flows")
     else:
         STEP("Verification of TCP offloaded flows: Pass")
-    time.sleep(10)
-    
+    # time.sleep(10)
+    tcp_packet_count1 = count_packets(ahv_obj, "/tmp/tcpdump_output1.pcap", vm_obj_dict["vm1"].snic_ip, vm_obj_dict["vm2"].snic_ip,pac_type="tcp")
+    INFO(f"TCP packets on vf rep 1: {tcp_packet_count1}")
+    tcp_packet_count2 = count_packets(ahv_obj, "/tmp/tcpdump_output2.pcap", vm_obj_dict["vm2"].snic_ip, vm_obj_dict["vm1"].snic_ip,pac_type="tcp")
+    INFO(f"TCP packets on vf rep 2: {tcp_packet_count2}")
+    time.sleep(15)
+    start_tcpdump(ahv_obj, vf_list[0].vf_rep, "/tmp/tcpdump_output1.pcap",pac_type="udp")
+    start_tcpdump(ahv_obj, vf_list[1].vf_rep, "/tmp/tcpdump_output2.pcap",pac_type="udp")
     result=parse_iperf_output(start_iperf_test(vm_obj_dict["vm1"],vm_obj_dict["vm2"],udp=True))
     INFO(result)
     tc_filters_vf1_ingress_udp = get_tc_filter_details(ahv_obj, vm_obj_dict['vm1'].vf_rep)
@@ -950,14 +969,21 @@ def test_traffic(setup,host_data,skip_deletion_of_setup=False):
     tc_filters_br0_egress_udp=get_tc_filter_details(ahv_obj, bridge,type="egress")
     flows=parse_ahv_port_flows(ahv_obj)
     INFO(flows)
+    stop_tcpdump(ahv_obj, vm_obj_dict['vm1'].vf_rep)
+    stop_tcpdump(ahv_obj, vm_obj_dict['vm2'].vf_rep)
     if not check_flows(flows,vm_obj_dict['vm1'].vf_rep,vm_obj_dict['vm2'].vf_rep):
         STEP("Verification of UDP offloaded flows: Fail")
         raise ExpError("Failed to add flows")
     else:
         STEP("Verification of UDP offloaded flows: Pass")
+    udp_packet_count1 = count_packets(ahv_obj, "/tmp/tcpdump_output1.pcap", vm_obj_dict["vm1"].snic_ip, vm_obj_dict["vm2"].snic_ip,pac_type="udp")
+    INFO(f"UDP packets on vf rep 1: {tcp_packet_count1}")
+    udp_packet_count2 = count_packets(ahv_obj, "/tmp/tcpdump_output2.pcap", vm_obj_dict["vm2"].snic_ip, vm_obj_dict["vm1"].snic_ip,pac_type="udp")
+    INFO(f"UDP packets on vf rep 2: {tcp_packet_count2}")
     # tc_tcp_filters_vf2_egress = get_tc_filter_details(ahv_obj, vm_obj_dict['vm2'].vf_rep,type="egress")
     
     STEP(" iperf test: Ran")
+    
     STEP("tc filters of iperf traffic:")
     STEP(f"tc filters of tcp iperf traffic of {vm_obj_dict['vm1'].vf_rep} ingress")
     INFO(tc_filters_vf1_ingress_tcp)
