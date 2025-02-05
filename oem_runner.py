@@ -28,7 +28,10 @@ def start_tcpdump(vm_obj, interface,ip, output_file,pac_type="icmp",packet_count
     # output_file = pac_type+output_file
     # cmd=f"nohup tcpdump -i {interface}  -w {output_file} -c {packet_count} {pac_type} -vv > /dev/null 2>&1"
     if pac_type=='udp':
-        cmd=f"sudo nohup tcpdump -i {interface}  host 192.168.1.10 and icmp and host 192.168.1.20 -vv > {output_file} 2>&1"
+        if ip=="192.168.1.10":
+            cmd=f"sudo nohup tcpdump -i {interface}  host 192.168.1.10 and udp and host 192.168.1.20 -vv > {output_file} 2>&1"
+        else:
+            cmd=f"sudo nohup tcpdump -i {interface}  host 192.168.1.20 and icmp and host 192.168.1.10 -vv > {output_file} 2>&1"
     else:
         cmd=f"sudo nohup tcpdump -U -B 4096 -s 0 -i {interface} -w {output_file} -c {packet_count} {pac_type} -nn -vv > /dev/null 2>&1"
     
