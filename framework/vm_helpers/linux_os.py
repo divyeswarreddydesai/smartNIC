@@ -284,13 +284,34 @@ class LinuxOperatingSystem(AbstractOperatingSystem):
                 client_command = f"sudo iperf3 -c {server_ip} -t {duration} -p 9000 -P {parallel} -i 1 -b 10G -u "+bind_option
             else:
                 client_command = f"sudo iperf3 -c {server_ip} -t {duration} -P {parallel} -i 1 "+bind_option
-            result = self.execute(client_command,session_timeout=duration+10)
+            result = self.execute(client_command,session_timeout=duration+30)
             INFO("iperf client ran successfully.")
             # INFO(result['stdout'])
             return result['stdout']
         except ExpError as e:
             ERROR(f"Failed to run iperf client: {e}")
             raise ExpError(f"Failed to run iperf client: {e}")
+  def run_hping3(self,server_ip,interface,udp_protocol=False,duration=10):
+    """
+    Run hping3 client on the remote VM.
+    Args:
+    server_ip(str): IP address of the server
+    interface(str): Interface to send packets
+    udp_protocol(bool): Use udp protocol
+    duration(int): Duration of the test in seconds
+    """
+    try:
+        if udp_protocol:
+            client_command = f"sudo hping3 -I {interface} --udp -p 9000 -c {duration} -S {server_ip}"
+        else:
+            client_command = f"sudo hping3 -I {interface} -c {duration} -S {server_ip}"
+        result = self.execute(client_command,session_timeout=duration+10)
+        INFO("hping3 client ran successfully.")
+        # INFO(result['stdout'])
+        return result['stdout']
+    except ExpError as e:
+        ERROR(f"Failed to run hping3 client: {e}")
+        # raise ExpError(f"Failed to run hping3 client: {e}")
   @staticmethod
   def local_interactive_execute(cmd, prompt=''):
     """Method to executes an interactive command on local machine.
