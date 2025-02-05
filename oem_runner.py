@@ -22,11 +22,12 @@ PARTITION=False
 def load_config(config_file):
     with open(config_file, 'r') as file:
         return json.load(file)
-def start_tcpdump(vm_obj, interface, output_file,pac_type="icmp",packet_count=200):
+def start_tcpdump(vm_obj, interface, output_file,pac_type="icmp",packet_count=1000):
     # cmd = f"tcpdump -i {interface} -w {output_file} & echo $! > /tmp/tcpdump.pid"
     # if pac_type:
-    cmd=f"nohup tcpdump -i {interface} -w {output_file} -c {packet_count} {pac_type} > /dev/null 2>&1"
-        
+    # cmd=f"nohup tcpdump -i {interface}  -w {output_file} -c {packet_count} {pac_type} -vv > /dev/null 2>&1"
+    cmd=f"nohup tcpdump -i {interface}  -w {output_file} -c {packet_count} {pac_type} -vv > /dev/null 2>&1"
+    
     # cmd2=f"nohup tcpdump -i {interface} -w {output_file} -c 10 > /dev/null 2>&1"
     # vm_obj.execute(cmd)
     vm_obj.execute(cmd, background=True,retries=10)
@@ -710,6 +711,8 @@ def firmware_check(setup=None,host_ip=None,port=None,vf=False,driver_version=Non
     # INFO(setup.AHV_nic_port_map[host_ip][port]["firmware_version"][0])
     
     min_firm=min_firm.split(" ")
+    INFO("firmware Version : "+fw_version)
+    INFO("driver Version : "+driver_version[0]+driver_version[1])
     if (Version.parse(fw_version)<Version.parse(min_firm[0])):
         # setup.AHV_nic_port_map[i].pop(port)
         ERROR(f"Minimum firmware version required is {min_firm}. Current firmware version is {setup.AHV_nic_port_map[host_ip][port]['firmware_version']} for port {port} in {host_ip}.")
@@ -915,6 +918,7 @@ def test_traffic(setup,host_data,skip_deletion_of_setup=False):
     # vm_obj_dict["vm2"].ssh_obj.execute("ifconfig")
     STEP("FW and driver version check for VM Image START")
     for vm_obj in vm_obj_dict.values():
+        INFO("vm name : "+vm_obj.name)
         firmware_check(vf=True,driver_version=vm_obj.driver_version,fw_version=vm_obj.firmware_version)
     STEP("FW and driver version check for VM Image: PASS")
     INFO(vm_dict)
@@ -1102,7 +1106,7 @@ def test_traffic(setup,host_data,skip_deletion_of_setup=False):
     INFO(f"TCP packets on vf rep 1: {tcp_packet_count1}")
     tcp_packet_count2 = count_packets(ahv_obj, "/tmp/tcpdump_output2.pcap", vm_obj_dict[vm_names[1]].snic_ip, vm_obj_dict[vm_names[0]].snic_ip,pac_type="tcp")
     INFO(f"TCP packets on vf rep 2: {tcp_packet_count2}")
-    time.sleep(15)
+    time.sleep(25)
     start_tcpdump(ahv_obj, vf_list[0].vf_rep, "/tmp/tcpdump_output1.pcap",pac_type="udp")
     start_tcpdump(ahv_obj, vf_list[1].vf_rep, "/tmp/tcpdump_output2.pcap",pac_type="udp")
     result=parse_iperf_output(start_iperf_test(vm_obj_dict[vm_names[0]],vm_obj_dict[vm_names[1]],udp=True))
@@ -1119,7 +1123,7 @@ def test_traffic(setup,host_data,skip_deletion_of_setup=False):
         raise ExpError("Failed to add flows")
     else:
         STEP("Verification of UDP offloaded flows: Pass")
-    STEP("TCPDump for UDP packets")
+    STEP("TcpDump for UDP packets")
     udp_packet_count1 = count_packets(ahv_obj, "/tmp/tcpdump_output1.pcap", vm_obj_dict[vm_names[0]].snic_ip, vm_obj_dict[vm_names[1]].snic_ip,pac_type="udp")
     INFO(f"UDP packets on vf rep 1: {udp_packet_count1}")
     udp_packet_count2 = count_packets(ahv_obj, "/tmp/tcpdump_output2.pcap", vm_obj_dict[vm_names[1]].snic_ip, vm_obj_dict[vm_names[0]].snic_ip,pac_type="udp")
