@@ -22,11 +22,15 @@ PARTITION=False
 def load_config(config_file):
     with open(config_file, 'r') as file:
         return json.load(file)
-def start_tcpdump(vm_obj, interface, output_file,pac_type="icmp",packet_count=1000):
+def start_tcpdump(vm_obj, interface,ip, output_file,pac_type="icmp",packet_count=2000):
     # cmd = f"tcpdump -i {interface} -w {output_file} & echo $! > /tmp/tcpdump.pid"
     # if pac_type:
+    # output_file = pac_type+output_file
     # cmd=f"nohup tcpdump -i {interface}  -w {output_file} -c {packet_count} {pac_type} -vv > /dev/null 2>&1"
-    cmd=f"nohup tcpdump -i {interface}  -w {output_file} -c {packet_count} {pac_type} -vv > /dev/null 2>&1"
+    if pac_type=='udp':
+        cmd=f"sudo nohup tcpdump -i {interface}  host 192.168.1.10 and icmp and host 192.168.1.20 -vv > {output_file} 2>&1"
+    else:
+        cmd=f"sudo nohup tcpdump -U -B 4096 -s 0 -i {interface} -w {output_file} -c {packet_count} {pac_type} -nn -vv > /dev/null 2>&1"
     
     # cmd2=f"nohup tcpdump -i {interface} -w {output_file} -c 10 > /dev/null 2>&1"
     # vm_obj.execute(cmd)
@@ -45,7 +49,7 @@ def start_tcpdump(vm_obj, interface, output_file,pac_type="icmp",packet_count=10
 def stop_tcpdump(vm_obj, interface):
     try:
         # Find the process ID(s) of the tcpdump process
-        find_process_cmd = f"pgrep -f 'tcpdump -i {interface} -w'"
+        find_process_cmd = f"pgrep -f 'tcpdump -i {interface} '"
         result = vm_obj.execute(find_process_cmd)
         if result['status'] != 0 or not result['stdout'].strip():
             WARN(f"No tcpdump process found for interface {interface}.")
@@ -61,20 +65,24 @@ def stop_tcpdump(vm_obj, interface):
         ERROR(f"Failed to stop tcpdump process for interface {interface}: {e}")
 
 def count_packets(vm_obj, pcap_file, src_ip=None, dst_ip=None,pac_type="icmp"):
-    filter_cmd = pac_type
-    if src_ip:
-        filter_cmd += f" and src {src_ip}"
-    if dst_ip:
-        filter_cmd += f" and dst {dst_ip}"
-    
-    cmd = f"tcpdump -r {pcap_file} '{filter_cmd}'"
-    result = vm_obj.execute(cmd)
+    if pac_type=='udp':
+        result = vm_obj.execute(f"cat {pcap_file}")
+        
+    else:
+        filter_cmd = pac_type
+        if src_ip:
+            filter_cmd += f" and src {src_ip}"
+        if dst_ip:
+            filter_cmd += f" and dst {dst_ip}"
+        
+        cmd = f"tcpdump -vv -r {pcap_file} '{filter_cmd}'"
+        result = vm_obj.execute(cmd)
     
     if result['status'] != 0:
         ERROR(f"Failed to read pcap file {pcap_file}")
         raise ExpError(f"Failed to read pcap file {pcap_file}")
     INFO(result["stdout"])
-    packet_count = len(result['stdout'].strip().split('\n'))-2
+    packet_count = (len(result['stdout'].strip().split('\n'))-2)//2
     return packet_count
 
     
@@ -674,7 +682,8 @@ def start_iperf_test(vm_obj_1,vm_obj_2,udp):
     except Exception as e:
         ERROR(f"Failed to stop iperf server: {e}")
     vm_obj_2.ssh_obj.start_iperf_server(udp)
-    result = vm_obj_1.ssh_obj.run_iperf_client(vm_obj_2.snic_ip,udp,duration=300)
+    result=vm_obj_1.ssh_obj.run_hping3(vm_obj_2.snic_ip,vm_obj_2.smartnic_interface_data.name,udp)
+    result = vm_obj_1.ssh_obj.run_iperf_client(vm_obj_2.snic_ip,udp,duration=30)
     INFO(result)
     # Display the results
     print(f"iperf test results from {vm_obj_1.snic_ip} to {vm_obj_2.snic_ip}:\n{result}")
@@ -758,14 +767,15 @@ def port_selection(setup,host_ip,port):
             if j not in res:
                 ports.remove(j)
         for j in ports:
-            if len(setup.AHV_nic_port_map[i][j]["supported_capabilities"])>0 and setup.AHV_nic_port_map[i][j]['nic_type']!="Unknown":
-                try:
-                    firmware_check(setup=setup,host_ip=i,port=j)
-                    host_ip=i
-                    port=j
-                    break
-                except ExpError as e:
-                    continue
+            if setup.AHV_nic_port_map[i][j].get("supported_capabilities") :
+                if len(setup.AHV_nic_port_map[i][j]["supported_capabilities"])>0 and setup.AHV_nic_port_map[i][j]['nic_type']!="Unknown":
+                    try:
+                        firmware_check(setup=setup,host_ip=i,port=j)
+                        host_ip=i
+                        port=j
+                        break
+                    except ExpError as e:
+                        continue
         if host_ip!="" and port!="":
             break
     if host_ip=="" and port=="":
@@ -1007,10 +1017,12 @@ def test_traffic(setup,host_data,skip_deletion_of_setup=False):
     #     STEP("Verification of offloaded flows: Pass")
     
     INFO("packet count test")
-    ahv_obj.execute("rm -f /tmp/tcpdump_output1.pcap")
-    ahv_obj.execute("rm -f /tmp/tcpdump_output2.pcap")
-    start_tcpdump(ahv_obj, vf_list[0].vf_rep, "/tmp/tcpdump_output1.pcap")
-    start_tcpdump(ahv_obj, vf_list[1].vf_rep, "/tmp/tcpdump_output2.pcap")
+    prot=["icmp","udp","tcp"]
+    for i in prot:
+        ahv_obj.execute(f"rm -f /tmp/{i}tcpdump_output1.pcap")
+        ahv_obj.execute(f"rm -f /tmp/{i}tcpdump_output2.pcap")
+    start_tcpdump(ahv_obj, vf_list[0].vf_rep,vm_obj_dict[vm_names[0]].snic_ip,"/tmp/icmptcpdump_output1.pcap")
+    start_tcpdump(ahv_obj, vf_list[1].vf_rep,vm_obj_dict[vm_names[1]].snic_ip, "/tmp/icmptcpdump_output2.pcap")
     # ahv_obj.execute("ls /tmp/tcpdump*")
     time.sleep(2)
     # vm_obj_dict["vm1"].ssh_obj.execute("ifconfig")
@@ -1068,9 +1080,9 @@ def test_traffic(setup,host_data,skip_deletion_of_setup=False):
         STEP("Verification of packet count using offloaded flows: Fail")
     else:
         STEP("Verification of packet count using offloaded flows: Pass")
-    icmp_packet_count1 = count_packets(ahv_obj, "/tmp/tcpdump_output1.pcap", vm_obj_dict[vm_names[0]].snic_ip, vm_obj_dict[vm_names[1]].snic_ip)
+    icmp_packet_count1 = count_packets(ahv_obj, "/tmp/icmptcpdump_output1.pcap", vm_obj_dict[vm_names[0]].snic_ip, vm_obj_dict[vm_names[1]].snic_ip)
     INFO(f"ICMP packet count on vf1: {icmp_packet_count1}")
-    icmp_packet_count2 = count_packets(ahv_obj, "/tmp/tcpdump_output2.pcap", vm_obj_dict[vm_names[1]].snic_ip, vm_obj_dict[vm_names[0]].snic_ip)
+    icmp_packet_count2 = count_packets(ahv_obj, "/tmp/icmptcpdump_output2.pcap", vm_obj_dict[vm_names[1]].snic_ip, vm_obj_dict[vm_names[0]].snic_ip)
     INFO(f"ICMP packet count on vf2: {icmp_packet_count2}")
     if icmp_packet_count1 <= 1 and icmp_packet_count2 <= 1:
         STEP("Verification of packet count: Pass")
@@ -1081,8 +1093,8 @@ def test_traffic(setup,host_data,skip_deletion_of_setup=False):
     # time.sleep(2)
     time.sleep(15)
     STEP("iperf test")
-    start_tcpdump(ahv_obj, vf_list[0].vf_rep, "/tmp/tcpdump_output1.pcap",pac_type="tcp")
-    start_tcpdump(ahv_obj, vf_list[1].vf_rep, "/tmp/tcpdump_output2.pcap",pac_type="tcp")
+    start_tcpdump(ahv_obj, vf_list[0].vf_rep,vm_obj_dict[vm_names[0]].snic_ip, "/tmp/tcptcpdump_output1.pcap",pac_type="tcp")
+    start_tcpdump(ahv_obj, vf_list[1].vf_rep,vm_obj_dict[vm_names[1]].snic_ip, "/tmp/tcptcpdump_output2.pcap",pac_type="tcp")
     result=parse_iperf_output(start_iperf_test(vm_obj_dict[vm_names[0]],vm_obj_dict[vm_names[1]],udp=False))
     INFO(result)
     tc_filters_vf1_ingress_tcp = get_tc_filter_details(ahv_obj, vm_obj_dict[vm_names[0]].vf_rep)
@@ -1102,13 +1114,13 @@ def test_traffic(setup,host_data,skip_deletion_of_setup=False):
     # time.sleep(10)
     STEP("TCPDump for TCP packets")
 
-    tcp_packet_count1 = count_packets(ahv_obj, "/tmp/tcpdump_output1.pcap", vm_obj_dict[vm_names[0]].snic_ip, vm_obj_dict[vm_names[1]].snic_ip,pac_type="tcp")
+    tcp_packet_count1 = count_packets(ahv_obj, "/tmp/tcptcpdump_output1.pcap", vm_obj_dict[vm_names[0]].snic_ip, vm_obj_dict[vm_names[1]].snic_ip,pac_type="tcp")
     INFO(f"TCP packets on vf rep 1: {tcp_packet_count1}")
-    tcp_packet_count2 = count_packets(ahv_obj, "/tmp/tcpdump_output2.pcap", vm_obj_dict[vm_names[1]].snic_ip, vm_obj_dict[vm_names[0]].snic_ip,pac_type="tcp")
+    tcp_packet_count2 = count_packets(ahv_obj, "/tmp/tcptcpdump_output2.pcap", vm_obj_dict[vm_names[1]].snic_ip, vm_obj_dict[vm_names[0]].snic_ip,pac_type="tcp")
     INFO(f"TCP packets on vf rep 2: {tcp_packet_count2}")
     time.sleep(25)
-    start_tcpdump(ahv_obj, vf_list[0].vf_rep, "/tmp/tcpdump_output1.pcap",pac_type="udp")
-    start_tcpdump(ahv_obj, vf_list[1].vf_rep, "/tmp/tcpdump_output2.pcap",pac_type="udp")
+    start_tcpdump(ahv_obj, vf_list[0].vf_rep,vm_obj_dict[vm_names[0]].snic_ip, "/tmp/udptcpdump_output1.txt",pac_type="udp")
+    start_tcpdump(ahv_obj, vf_list[1].vf_rep,vm_obj_dict[vm_names[1]].snic_ip, "/tmp/udptcpdump_output2.txt",pac_type="udp")
     result=parse_iperf_output(start_iperf_test(vm_obj_dict[vm_names[0]],vm_obj_dict[vm_names[1]],udp=True))
     INFO(result)
     tc_filters_vf1_ingress_udp = get_tc_filter_details(ahv_obj, vm_obj_dict[vm_names[0]].vf_rep)
@@ -1116,18 +1128,22 @@ def test_traffic(setup,host_data,skip_deletion_of_setup=False):
     tc_filters_br0_egress_udp=get_tc_filter_details(ahv_obj, bridge,type="egress")
     flows=parse_ahv_port_flows(ahv_obj)
     INFO(flows)
-    stop_tcpdump(ahv_obj, vm_obj_dict[vm_names[0]].vf_rep)
-    stop_tcpdump(ahv_obj, vm_obj_dict[vm_names[1]].vf_rep)
+    
     if not check_flows(flows,vm_obj_dict[vm_names[0]].vf_rep,vm_obj_dict[vm_names[1]].vf_rep):
         STEP("Verification of UDP offloaded flows: Fail")
         raise ExpError("Failed to add flows")
     else:
         STEP("Verification of UDP offloaded flows: Pass")
     STEP("TcpDump for UDP packets")
-    udp_packet_count1 = count_packets(ahv_obj, "/tmp/tcpdump_output1.pcap", vm_obj_dict[vm_names[0]].snic_ip, vm_obj_dict[vm_names[1]].snic_ip,pac_type="udp")
-    INFO(f"UDP packets on vf rep 1: {udp_packet_count1}")
-    udp_packet_count2 = count_packets(ahv_obj, "/tmp/tcpdump_output2.pcap", vm_obj_dict[vm_names[1]].snic_ip, vm_obj_dict[vm_names[0]].snic_ip,pac_type="udp")
-    INFO(f"UDP packets on vf rep 2: {udp_packet_count2}")
+    time.sleep(3)
+    stop_tcpdump(ahv_obj, vm_obj_dict[vm_names[0]].vf_rep)
+    stop_tcpdump(ahv_obj, vm_obj_dict[vm_names[1]].vf_rep)
+    STEP(f"UDP TCPDump at {vm_obj_dict[vm_names[0]].vf_rep}")
+    udp_packet_count1 = count_packets(ahv_obj, "/tmp/udptcpdump_output1.txt", vm_obj_dict[vm_names[0]].snic_ip, vm_obj_dict[vm_names[1]].snic_ip,pac_type="udp")
+    # INFO(f"UDP packets on vf rep 1: {udp_packet_count1}")
+    STEP(f"UDP TCPDump at {vm_obj_dict[vm_names[1]].vf_rep}")
+    udp_packet_count2 = count_packets(ahv_obj, "/tmp/udptcpdump_output2.txt", vm_obj_dict[vm_names[1]].snic_ip, vm_obj_dict[vm_names[0]].snic_ip,pac_type="udp")
+    # INFO(f"UDP packets on vf rep 2: {udp_packet_count2}")
     # tc_tcp_filters_vf2_egress = get_tc_filter_details(ahv_obj, vm_obj_dict[vm_names[1]].vf_rep,type="egress")
     
     STEP(" iperf test: Ran")
