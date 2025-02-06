@@ -187,7 +187,7 @@ class SSHClient:
             }
 
             except paramiko.SSHException as e:
-                ERROR(f"SSHException: {e}")
+                # ERROR(f"SSHException: {e}")
                 if(attempt==int(retries/2)):
                     self.close()
                     self.connect()
