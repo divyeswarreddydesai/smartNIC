@@ -724,7 +724,8 @@ def firmware_check(setup=None,host_ip=None,port=None,vf=False,driver_version=Non
     
     min_firm=min_firm.split(" ")
     INFO("firmware Version : "+fw_version)
-    INFO("driver Version : "+driver_version[0]+driver_version[1])
+    INFO("driver name : "+driver_version[0])
+    INFO("driver Version : "+driver_version[1])
     if (Version.parse(fw_version)<Version.parse(min_firm[0])):
         # setup.AHV_nic_port_map[i].pop(port)
         ERROR(f"Minimum firmware version required is {min_firm}. Current firmware version is {setup.AHV_nic_port_map[host_ip][port]['firmware_version']} for port {port} in {host_ip}.")
@@ -1194,9 +1195,10 @@ def test_traffic(setup,host_data,skip_deletion_of_setup=False):
     # tc_ping_filters_vf1_egress=json.loads(tc_ping_filters_vf1_egress)
     
     if not skip_deletion_of_setup:
-        STEP("TEARDOWN INCREASED")
+        STEP("TEARDOWN STARTED")
         ahv_obj.execute(f"ovs-ofctl del-flows {bridge} in_port={vm_obj_dict[vm_names[0]].vf_rep}")
         ahv_obj.execute(f"ovs-ofctl del-flows {bridge} in_port={vm_obj_dict[vm_names[1]].vf_rep}")
+        STEP("Deleting VMs and Network")
         for name,id in vm_dict.items():
             if name in vm_names:
                 run_and_check_output(setup,f"acli vm.off {name}:{id}")
@@ -1210,6 +1212,7 @@ def test_traffic(setup,host_data,skip_deletion_of_setup=False):
             else:
                 raise ExpError(f"Failed to delete network: {res['stderr']}")
         if PARTITION:
+            STEP("Unpartitioning NIC")
             try:
                 res=cvm_obj.execute(f"/home/nutanix/tmp/partition.py unpartition {nic_config['host_ip']} {nic_config['port']}")
                 INFO("NIC is unpartitioned successfully")
