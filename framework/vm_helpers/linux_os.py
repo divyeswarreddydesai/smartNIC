@@ -1441,9 +1441,11 @@ class LinuxOperatingSystem(AbstractOperatingSystem):
       cmd += " -W %s" % wait_time
     INFO(cmd)
     result = self.execute(cmd, ignore_errors=True)
+    INFO(result["stdout"])
     if "timed out" in result["stdout"] or "Destination Host Unreachable" in\
       result["stdout"] or "unknown host" in result["stdout"]:
       result["status"] = 1
+    
     return result["status"]
 
   def poweroff(self, run_as_root=True):

@@ -85,7 +85,7 @@ def count_packets(vm_obj, pcap_file, src_ip=None, dst_ip=None,pac_type="icmp"):
         ERROR(f"Failed to read pcap file {pcap_file}")
         raise ExpError(f"Failed to read pcap file {pcap_file}")
     INFO(result["stdout"])
-    
+    DEBUG(len(result['stdout'].strip().split('\n')))
     packet_count = (len(result['stdout'].strip().split('\n'))-2)//2
     return packet_count
 
@@ -252,9 +252,9 @@ def parse_ahv_port_flows(host):
     except Exception as e:
         assert False, f"The flows are not offloaded or Failed to run command: {e}"
     # output = output.split("\n")
-    print("-----------------RAW OFFLOADED FLOWS ON HOST------------------")
-    print(output)
-    print("--------------------------------------------------------------\n")
+    INFO("-----------------RAW OFFLOADED FLOWS ON HOST------------------")
+    INFO(output)
+    INFO("--------------------------------------------------------------\n")
     flows = []
     for line in output.splitlines():
         parsed_flow = parse_flow(line)
@@ -1045,6 +1045,7 @@ def test_traffic(setup,host_data,skip_deletion_of_setup=False):
     # import pdb;pdb.set_trace()
     vm_obj_dict[vm_names[0]].set_ip_for_smartnic("192.168.1.10","192.168.1.0")
     vm_obj_dict[vm_names[1]].set_ip_for_smartnic("192.168.1.20","192.168.1.0")
+    STEP("Starting Ping Test")
     vm_obj_dict[vm_names[0]].ssh_obj.ping_an_ip(vm_obj_dict[vm_names[1]].snic_ip,interface=vm_obj_dict[vm_names[0]].smartnic_interface_data.name)
     # vm_obj_dict[vm_names[0]].ssh_obj.execute("ifconfig")
     # vm_obj_dict[vm_names[1]].ssh_obj.execute("ifconfig")
