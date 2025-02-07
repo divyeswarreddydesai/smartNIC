@@ -4,6 +4,7 @@ import time
 import socket
 import threading
 import traceback
+import os
 from scp import SCPClient, SCPException
 from paramiko.ssh_exception import AuthenticationException
 from framework.logging.error import ExpError
@@ -217,10 +218,12 @@ class SSHClient:
             ERROR(f"Exception while closing SSH client: {e}")
     def _remove_host_key(self, hostname):
         """Remove the host key for the given hostname from the known hosts file."""
-        known_hosts = paramiko.util.load_host_keys(paramiko.util.get_default_know_hosts())
+        known_hosts_path = os.path.expanduser("~/.ssh/known_hosts")
+        known_hosts = paramiko.util.load_host_keys(known_hosts_path)
+        
         if hostname in known_hosts:
             del known_hosts[hostname]
-            known_hosts.save(paramiko.util.get_default_know_hosts())
+            known_hosts.save(known_hosts_path)
             DEBUG(f"Removed old host key for {hostname}")
     def _get_connection(self):
         """Initiates new SSH connection
