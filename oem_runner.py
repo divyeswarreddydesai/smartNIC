@@ -768,7 +768,7 @@ def port_selection(setup,host_ip,port):
             ports=[port]
         res=setup.AHV_obj_dict[i].execute("ovs-appctl bond/show")['stdout']
         for j in ports:
-            if j not in res:
+            if (j not in res) or ((j+": disabled") in res):
                 ports.remove(j)
         for j in ports:
             if setup.AHV_nic_port_map[i][j].get("supported_capabilities") :
@@ -797,7 +797,7 @@ def vm_creation_and_network_creation(setup,host_data,skip_driver=False):
     nic_config=host_data["nic_config"]
     vlan_config=host_data["vlan_config"]
     nic_vf_data=None
-    STEP("Firmware and driver version check of Physical NIC")
+    # STEP("Firmware and driver version check of Physical NIC")
     # host_ip=nic_config['host_ip']
     # port=nic_config['port']
     if nic_config['host_ip']=="" or nic_config['port']=="":
@@ -806,12 +806,15 @@ def vm_creation_and_network_creation(setup,host_data,skip_driver=False):
         INFO(f"Selected port {nic_config['port']} on host {nic_config['host_ip']}")
     else:
         res=setup.AHV_obj_dict[nic_config['host_ip']].execute("ovs-appctl bond/show")['stdout']
-        if nic_config['port'] not in res:
+        if (nic_config['port'] not in res):
             raise ExpError(f"Port {nic_config['port']} not found in br0 bond of host {nic_config['host_ip']}")
+        elif ((nic_config['port']+": disabled") in res):
+            raise ExpError(f"Port {nic_config['port']} is not connected/disabled, in br0 bond of host {nic_config['host_ip']}")
         if len(setup.AHV_nic_port_map[nic_config['host_ip']][nic_config['port']]["supported_capabilities"])>0 and setup.AHV_nic_port_map[nic_config['host_ip']][nic_config['port']]['nic_type']!="Unknown":
             if not skip_driver:
+                STEP(f"Firmware and driver version check of Physical NIC {nic_config['port']} on host {nic_config['host_ip']}")
                 firmware_check(setup=setup,host_ip=nic_config['host_ip'],port=nic_config['port'])
-                STEP("Firmware and driver version check of Virtual NIC: PASS")
+                STEP("Firmware and driver version check of Physical NIC: PASS")
         else:
             raise ExpError(f"NIC doesn't support DPOFFLOAD, only ConnectX-6 Lx and Dx are supported")
     bridge=nic_config.get("bridge",False)
