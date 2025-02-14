@@ -1034,11 +1034,11 @@ def test_traffic(setup,host_data,skip_deletion_of_setup=False):
     time.sleep(2)
     # vm_obj_dict["vm1"].ssh_obj.execute("ifconfig")
     # vm_obj_dict["vm2"].ssh_obj.execute("ifconfig")
-    if bridge=="br0":
-        try:
-            ahv_obj.execute(f"ovs-appctl bond/set-active-member br0-up {nic_config['port']}")
-        except Exception as e:
-            raise ExpError(f"Failed to set active member: {e}")
+    # if bridge=="br0":
+    #     try:
+    #         ahv_obj.execute(f"ovs-appctl bond/set-active-member br0-up {nic_config['port']}")
+    #     except Exception as e:
+    #         raise ExpError(f"Failed to set active member: {e}")
     # ahv_obj.execute(f"tc qdisc del dev {vm_obj_dict[vm_names[0]].vf_rep} ingress")
     # ahv_obj.execute(f"tc qdisc del dev {vm_obj_dict[vm_names[1]].vf_rep} ingress")
     # ahv_obj.execute(f"tc qdisc add dev {vm_obj_dict[vm_names[0]].vf_rep} clsact")
