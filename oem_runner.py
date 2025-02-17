@@ -767,10 +767,17 @@ def port_selection(setup,host_ip,port):
         else:
             ports=[port]
         res=setup.AHV_obj_dict[i].execute("ovs-appctl bond/show")['stdout']
+        new_ports=ports[:]
+        INFO(ports)
         for j in ports:
+            INFO(j)
+            INFO(j not in res)
+            INFO((j+": disabled") in res)
             if (j not in res) or ((j+": disabled") in res):
-                ports.remove(j)
-        for j in ports:
+                DEBUG(f"removing port:{j}")
+                new_ports.remove(j)
+        DEBUG(new_ports)
+        for j in new_ports:
             if setup.AHV_nic_port_map[i][j].get("supported_capabilities") :
                 if len(setup.AHV_nic_port_map[i][j]["supported_capabilities"])>0 and setup.AHV_nic_port_map[i][j]['nic_type']!="Unknown":
                     try:
