@@ -217,18 +217,19 @@ class SSHClient:
         except Exception as e:
             ERROR(f"Exception while closing SSH client: {e}")
     def _remove_host_key(self, hostname):
-        """Remove the host key for the given hostname from the known hosts file."""
+        """Remove the host key for the given hostname and re-add it."""
         known_hosts_path = os.path.expanduser("~/.ssh/known_hosts")
         if not os.path.exists(known_hosts_path):
             open(known_hosts_path, 'a').close()
-        
-        # Use ssh-keygen -R to remove the host key
+
         os.system(f"ssh-keygen -R {hostname}")
-        DEBUG("removed the host key")
-        # Add the new host key using ssh-keyscan
-        # if hostname not in open(known_hosts_path).read():
-        #     os.system(f"ssh-keyscan {hostname} >> {known_hosts_path}")
-        #     DEBUG(f"Recreated host key for {hostname}")
+        DEBUG("removed host key")
+        time.sleep(1)  # Allow time for removal to take effect
+
+        # Fetch and add the new key
+        os.system(f"ssh-keyscan -H {hostname} >> {known_hosts_path}")
+        DEBUG(f"Recreated host key for {hostname}")
+
     def _get_connection(self):
         """Initiates new SSH connection
 
@@ -279,7 +280,7 @@ class SSHClient:
                 if "Host key for server" in str(e):
                     ERROR(f"Host key mismatch for {self.ip}. Removing old key and retrying.")
                     self._remove_host_key(self.ip)
-                    continue
+                    
                 if connection_attempt == max_attempt:
                     raise ExpError('Connection Error. %s' % str(e))
                 DEBUG("Hit error: %s. Continuing with retry" % str(e))
