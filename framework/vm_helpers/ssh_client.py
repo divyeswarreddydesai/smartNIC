@@ -219,12 +219,16 @@ class SSHClient:
     def _remove_host_key(self, hostname):
         """Remove the host key for the given hostname from the known hosts file."""
         known_hosts_path = os.path.expanduser("~/.ssh/known_hosts")
-        known_hosts = paramiko.util.load_host_keys(known_hosts_path)
+        if not os.path.exists(known_hosts_path):
+            open(known_hosts_path, 'a').close()
         
-        if hostname in known_hosts:
-            del known_hosts[hostname]
-            known_hosts.save(known_hosts_path)
-            DEBUG(f"Removed old host key for {hostname}")
+        # Use ssh-keygen -R to remove the host key
+        os.system(f"ssh-keygen -R {hostname}")
+        DEBUG("removed the host key")
+        # Add the new host key using ssh-keyscan
+        # if hostname not in open(known_hosts_path).read():
+        #     os.system(f"ssh-keyscan {hostname} >> {known_hosts_path}")
+        #     DEBUG(f"Recreated host key for {hostname}")
     def _get_connection(self):
         """Initiates new SSH connection
 
