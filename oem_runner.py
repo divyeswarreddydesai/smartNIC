@@ -619,10 +619,17 @@ class VM:
             vm_data=json.loads(res)
         except Exception as e:
             raise ExpError(f"Failed to get VM NIC data from avm: {e}")
-        acc_ip=self.get_dhcp_assigned_ip(vm_data)
-        self.ip=acc_ip
+        start_time = time.time()
+        while time.time() - start_time < 120:
+            self.ip = self.get_dhcp_assigned_ip(vm_data)
+            if self.ip:
+                break
+            DEBUG(f"IP address not assigned yet for VM {self.name}. Retrying in 5 seconds...")
+            time.sleep(5)  # Sleep for 5 seconds before checking again
+
         if self.ip is None:
-            raise ExpError(f"Failed to get IP address for VM {self.name}")
+            raise ExpError(f"Failed to get IP address for VM {self.name} within 2 minutes")
+        INFO(f"IP address for VM {self.name}: {self.ip}")
         self.ssh_obj = LinuxOperatingSystem(self.ip, username=username, password=password)
         if not self.ssh_obj:
             raise ExpError(f"Failed to establish connection to any NIC of VM {self.name}")
@@ -686,7 +693,7 @@ def start_iperf_test(vm_obj_1,vm_obj_2,udp):
     except Exception as e:
         ERROR(f"Failed to stop iperf server: {e}")
     vm_obj_2.ssh_obj.start_iperf_server(udp)
-    result = vm_obj_1.ssh_obj.run_iperf_client(vm_obj_2.snic_ip,udp,duration=300)
+    result = vm_obj_1.ssh_obj.run_iperf_client(vm_obj_2.snic_ip,udp,duration=5)
     INFO(result)
     # Display the results
     print(f"iperf test results from {vm_obj_1.snic_ip} to {vm_obj_2.snic_ip}:\n{result}")
