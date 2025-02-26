@@ -693,7 +693,7 @@ def start_iperf_test(vm_obj_1,vm_obj_2,udp):
     except Exception as e:
         ERROR(f"Failed to stop iperf server: {e}")
     vm_obj_2.ssh_obj.start_iperf_server(udp)
-    result = vm_obj_1.ssh_obj.run_iperf_client(vm_obj_2.snic_ip,udp,duration=5)
+    result = vm_obj_1.ssh_obj.run_iperf_client(vm_obj_2.snic_ip,udp,duration=300)
     INFO(result)
     # Display the results
     print(f"iperf test results from {vm_obj_1.snic_ip} to {vm_obj_2.snic_ip}:\n{result}")
