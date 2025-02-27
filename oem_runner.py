@@ -610,22 +610,22 @@ class VM:
         return ansi_escape.sub('', text)
     def ssh_setup(self,setup,username="root",password="nutanix/4u"):
         vm_id_with_underscore = self.vm_id.replace('-', '_')
-        try:
-            res=setup.execute(f"busctl call com.nutanix.avm1 /com/nutanix/avm1/vms/{vm_id_with_underscore} com.nutanix.avm1.VmService Get | cut -d\' \' -f 4-")
-            # INFO(res)
-            # res=self.remove_ansi_escape_sequences(res['stdout'].strip())
-            res=res['stdout'].strip('"\r\n').replace('\\"','"')
-            DEBUG(res)
-            vm_data=json.loads(res)
-        except Exception as e:
-            raise ExpError(f"Failed to get VM NIC data from avm: {e}")
         start_time = time.time()
-        while time.time() - start_time < 120:
+        while time.time() - start_time < 180:
+            try:
+                res=setup.execute(f"busctl call com.nutanix.avm1 /com/nutanix/avm1/vms/{vm_id_with_underscore} com.nutanix.avm1.VmService Get | cut -d\' \' -f 4-")
+                # INFO(res)
+                # res=self.remove_ansi_escape_sequences(res['stdout'].strip())
+                res=res['stdout'].strip('"\r\n').replace('\\"','"')
+                DEBUG(res)
+                vm_data=json.loads(res)
+            except Exception as e:
+                raise ExpError(f"Failed to get VM NIC data from avm: {e}")
             self.ip = self.get_dhcp_assigned_ip(vm_data)
             if self.ip:
                 break
             DEBUG(f"IP address not assigned yet for VM {self.name}. Retrying in 5 seconds...")
-            time.sleep(5)  # Sleep for 5 seconds before checking again
+            time.sleep(10)  # Sleep for 5 seconds before checking again
 
         if self.ip is None:
             raise ExpError(f"Failed to get IP address for VM {self.name} within 2 minutes")
