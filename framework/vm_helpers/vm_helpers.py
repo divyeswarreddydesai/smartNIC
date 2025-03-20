@@ -2,7 +2,8 @@
 from framework.vm_helpers.ssh_client import SSHClient
 from framework.vm_helpers.linux_os import LinuxOperatingSystem
 from framework.vm_helpers.consts import *
-from framework.sdk_helpers.entity_manager import EntityManager
+from framework.oem_helpers.test_preruns import nic_data
+# from framework.sdk_helpers.entity_manager import EntityManager
 import pexpect
 import time
 from framework.logging.error import ExpError
@@ -12,7 +13,7 @@ class SETUP:
     def __init__(self, pcvm_ip, cvm_ip, pcvm_username=PCVM_USER, pcvm_password=PCVM_PASSWORD, cvm_username=CVM_USER, cvm_password=CVM_PASSWORD):
         self.pcvm = PCVM(pcvm_ip, pcvm_username, pcvm_password,cvm_ip=cvm_ip)
         self.cvm = CVM(cvm_ip, cvm_username, cvm_password)
-        self.entity_manager = EntityManager(self.pcvm)
+        # self.entity_manager = EntityManager(self.pcvm)
     def get_pcvm(self):
         return self.pcvm
 
@@ -39,6 +40,7 @@ class PCVM(LinuxOperatingSystem):
         self.AHV_nic_port_map={}
         self.cluster_uuid=self.get_cluster_uuid()
         self.host_ip_node_uuid=self.get_uuids()
+        
         DEBUG(self.host_ip_node_uuid)
         DEBUG(self.cluster_uuid)
     def get_cluster_uuid(self):
@@ -51,7 +53,7 @@ class PCVM(LinuxOperatingSystem):
         #     if self.cvm_ip in res_dict[i+1]['Controller VM IP Addre...']:
         #         return res_dict[i+1]['Cluster Id']
         return res_dict[1]['Cluster Id']    
-        raise Exception("Cluster UUID not found give correct PE ip")
+        # raise Exception("Cluster UUID not found give correct PE ip")
     def get_uuids(self):
         result=self.execute('ncli host list')
         res_dict=self.parse_stdout_to_dict(result["stdout"])
@@ -75,6 +77,8 @@ class CVM(LinuxOperatingSystem):
         self.cvm_obj_dict=self._create_cvm_ssh_clients()
         self.AHV_obj_dict=self._create_ahv_ssh_clients()
         self.AHV_nic_port_map={}
+        nic_data(self)
+        DEBUG(self.AHV_nic_port_map)
     def _get_host_ips(self):
         result=self.execute('hostips')
         # result=self.parse_stdout_to_dict(result["stdout"])

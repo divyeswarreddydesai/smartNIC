@@ -12,6 +12,7 @@ import argparse
 import subprocess
 import sys
 import time
+from requests.exceptions import HTTPError, RequestException
 
 requests.packages.urllib3.disable_warnings(InsecureRequestWarning)
 PARTITIONING_OWNER = None 
@@ -27,7 +28,7 @@ QUALIFIED_PFS={
                ('15b3','1021'):('101e',''),
                ('8086','1592'):('1889','0000'),
              }
-cert = ("/home/certs/AcropolisService/AcropolisService.crt", "/home/certs/AcropolisService/AcropolisService.key")
+cert = ("/home/certs/AcropolisService/AcropolisService.crt", "/home/certs/AcropolisService/AcropolisService.key","/home/certs/ca.pem")
 
 def get_sbdf(host, interface):
     cmd = ['ssh',host,'ethtool','-i',interface] 
@@ -239,6 +240,18 @@ def action_partition(args):
         sys.exit(f"Partitioning not support for {args.interface} in host({args.host_ip})")
 
     print(f"Got Partitioning json: {pf['Oem']['NTNX']}")
+    
+    if pf['Oem']['NTNX']['State'] == 'Host.Partitioned':
+      sys.exit(f"Error: {args.interface} is already partitioned.")
+    if args.network_uuid:
+      print(f"Setting Network Id: {args.network_uuid}")
+      payload = {"Oem": {"NTNX": {"Network": {"Id": args.network_uuid}}}}
+      print(f" Pay load : {payload}")
+      response = requests.patch(f"{HOST_GATEWAY}/host/v1/redfish/v1/Chassis/ahv/PCIeDevices/{device_id}/PCIeFunctions/{function_id}",
+                json=payload, cert=cert, verify=False) 
+      print(str(response), response.text)
+    time.sleep(10)
+    pf,_ = find_pf_vfs_from_sbdf(args)
     schema_id = None
     found=False
     for schema in pf['Oem']['NTNX']['Partitioning']['Pf']['SupportedSchemas']:
@@ -264,9 +277,6 @@ def action_partition(args):
        sys.exit("Error: Empty Owner") 
 
     print(f"Got Schema Id: {schema_id}, with owner: {owner}")
-    if pf['Oem']['NTNX']['State'] == 'Host.Partitioned':
-      sys.exit(f"Error: {args.interface} is already partitioned.")
-
     if pf['Oem']['NTNX']['State'] == "Host.Unused":
       print("PF state is in Unused state so moving to Used state")
       payload = {"Oem": {"NTNX": {"State": "Host.Used", "Owner": owner }}}
@@ -470,6 +480,8 @@ def entry():
             else:
               extra_str = ("or all" if action == 'show' else "")
               cmd_sub_parser.add_argument(arg['name'], type=arg['type'], help=arg['help']+extra_str)
+        if action == 'partition':
+            cmd_sub_parser.add_argument("--network_uuid", type=str, help="Network UUID to be assigned to the partitioned PF")
 
     args = parser.parse_args()
     if args.command in allowed_actions + ['setup']:
@@ -484,6 +496,6 @@ def entry():
            print(f"Method '{args.command}' not found")
     else:
         parser.print_help()
-
+        
 if __name__ == "__main__":
     entry()

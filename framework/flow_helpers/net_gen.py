@@ -1,10 +1,11 @@
 from framework.vm_helpers.linux_os import LinuxOperatingSystem
 from framework.interfaces.consts import *
-from framework.logging.log import INFO,WARN,ERROR
+from framework.logging.log import INFO,WARN,ERROR,DEBUG
 import os
 import time
 import re
-
+import pdb
+import json
 def gen_flows(ip1,ip2):
     vm_obj_1=LinuxOperatingSystem(ip1,username=RHEL_USER,password=RHEL_PASSWORD)
     # vm_obj_2=LinuxOperatingSystem(ip2,username=RHEL_USER,password=RHEL_PASSWORD)
@@ -170,7 +171,7 @@ def iperf_test(acc_ip1,acc_ip2,ip1,ip2,udp=False):
     result = vm_obj_1.run_iperf_client(ip2,udp)
     
     # Display the results
-    print(f"iperf test results from {ip1} to {ip2}:\n{result}")
+    DEBUG(f"iperf test results from {ip1} to {ip2}:\n{result}")
     return result
 def stop_iperf_server(vm_obj):
     pid_command = "pgrep -f 'iperf3 -s'"
@@ -192,31 +193,64 @@ def stop_iperf_server(vm_obj):
         else:
             ERROR(f"Failed to stop iperf server with PID {pid}: {result['stderr']}")
 
-def parse_iperf_output(iperf_output):
+def parse_iperf_output(iperf_output,udp=False):
     """
     Parse the iperf output to calculate downtime, maximum throughput, and average throughput.
     Args:
     iperf_output (str): The output from the iperf command.
     
     Returns:
-    dict: A dictionary containing downtime, maximum throughput, and average throughput.
+    dict: A dictionary containing maximum throughput, average throughput, retransmits, RTT, and other metrics.
     """
-    total_throughput = 0.0
-    max_throughput = 0.0
-    intervals = re.findall(r'\[.*?\]\s+(\d+\.\d+)-(\d+\.\d+)\s+sec\s+(\d+\.\d+)\s+\w+\s+(\d+\.\d+)\s+\w+/sec', iperf_output)
-    
-    for interval in intervals:
-        start, end, transferred, throughput = float(interval[0]), float(interval[1]), float(interval[2]), float(interval[3])
-        total_throughput += throughput
-        if throughput > max_throughput:
-            max_throughput = throughput
-    
-    average_throughput = total_throughput / len(intervals) if intervals else 0.0
-    
-    return {
-        'max_throughput': max_throughput,
-        'average_throughput': average_throughput
-    }
+    try:
+        # Extract intervals
+        iperf_output = json.loads(iperf_output)
+        intervals = iperf_output.get("intervals", [])
+        
+        total_throughput = 0.0
+        max_throughput = 0.0
+        retransmits = 0
+        packets_sent = 0
+        for interval in intervals:
+            sum_data = interval.get("sum", {})
+            throughput = sum_data.get("bits_per_second", 0) / 1e9  # Convert to Gbps
+            total_throughput += throughput
+            if throughput > max_throughput:
+                max_throughput = throughput
+
+            retransmits += sum_data.get("retransmits", 0)
+            # Extract RTT values from streams
+            streams = interval.get("streams", [])
+            for stream in streams:
+                if udp:
+                    packets_sent += int(stream.get("packets", 0))
+                else:
+                    packets_sent += int(stream.get("bytes", 0)/stream.get("pmtu",1))
+
+        # Calculate average throughput
+        average_throughput = total_throughput / len(intervals) if intervals else 0.0
+
+        # Extract RTT metrics
+
+        # Extract summary data
+        end_data = iperf_output.get("end", {})  
+        sum_sent = end_data.get("sum_sent", {}) if not udp else end_data.get("sum", {})
+        sum_received = end_data.get("sum_received", {})
+        cpu_utilization = end_data.get("cpu_utilization_percent", {})
+
+        return {
+            "max_throughput_gbps": max_throughput,
+            "average_throughput_gbps": average_throughput,
+            "total_retransmits": retransmits,
+            "packets_sent": packets_sent,
+            "total_bytes_sent": sum_sent.get("bytes", 0),
+            "total_bytes_received": sum_received.get("bytes", 0),
+            "cpu_utilization_host": cpu_utilization.get("host_total", 0),
+            "cpu_utilization_remote": cpu_utilization.get("remote_total", 0),
+        }
+    except Exception as e:
+        raise ValueError(f"Failed to parse iperf output: {e}")
+
 def wait_for_reboot(vm_obj, ip, timeout=300, interval=5):
     start_time = time.time()
     while time.time() - start_time < timeout:

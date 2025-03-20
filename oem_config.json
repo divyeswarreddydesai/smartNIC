@@ -1,7 +1,7 @@
 {
   "cluster_host_config": {
     "ips": {
-        "pe_ip": "10.2.43.122"
+        "pe_ip": "10.2.40.59"
     },
     "guest_vm_driver": {
       "use_driver_default": true,
@@ -11,13 +11,16 @@
     "vm_image": {
       "use_vm_default": true,
       "bind": true,
-      "vm_image_location": "http://phx-net-fs.corp.nutanix.com/net-isos/Centos7UVM-2.1.qcow2",
+      "vm_image_location": 
+      "http://phx-net-fs.corp.nutanix.com/net-isos/Centos7UVM-2.1.qcow2",
       "vm_image_name": "vm_image"
     },
     "nic_config": {
       "bridge": "br0",
-      "port": "eth4",
-      "host_ip": "10.2.43.172",
+      "port": "eth3",
+      "host_ip": "10.2.40.57",
+      "host_ip_2":"10.2.40.55",
+      "port_2": "eth7",
       "nic_family": ""
     },
     "vlan_config": {
@@ -38,7 +41,8 @@
     },
     "vm_image": {
       "bind": true,
-      "vm_image_location": "http://uranus.corp.nutanix.com/~rama.pandey/rocky-9_4_with_nm_firewalld.qcow2",
+      "vm_image_location":
+       "http://uranus.corp.nutanix.com/~rama.pandey/rocky-9_4_with_nm_firewalld.qcow2",
       "vm_image_name": "vm_image"
     }
   }

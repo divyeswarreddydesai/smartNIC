@@ -36,7 +36,7 @@ def setup_logger(debug=False):
     
     return logger
     
-    return logger
+
 
 # Initialize the logger with default level INFO
 logger = setup_logger()

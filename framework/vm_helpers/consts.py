@@ -29,13 +29,13 @@ PCVM_USER = os.environ.get("PCVM_USER", "nutanix")
 PCVM_PASSWORD = os.environ.get("PCVM_PASSWORD", "nutanix/4u")
 # CVM Credentials
 CVM_USER = os.environ.get("SVM_USER", "nutanix")
-CVM_PASSWORD = os.environ.get("SVM_PASSWORD", "RDMCluster.123")
+CVM_PASSWORD = os.environ.get("SVM_PASSWORD", "nutanix/4u")
 #SVM Credentials
 SVM_USER = os.environ.get("SVM_USER", "nutanix")
 SVM_PASSWORD = os.environ.get("SVM_PASSWORD", "nutanix/4u")
 #AHV Credentials
 AHV_USER = os.environ.get("AHV_USER", "root")
-AHV_PASSWORD = os.environ.get("AHV_PASSWORD", "RDMCluster.123")
+AHV_PASSWORD = os.environ.get("AHV_PASSWORD", "nutanix/4u")
 # SSP Credentials
 AD_DOMAIN_NAME = "qa.nutanix.com"
 SSP_SERVICE_ACCOUNT = "ssp_admin"

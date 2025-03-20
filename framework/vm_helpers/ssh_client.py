@@ -5,12 +5,14 @@ import socket
 import threading
 import traceback
 import os
+import logging
 from scp import SCPClient, SCPException
 from paramiko.ssh_exception import AuthenticationException
 from framework.logging.error import ExpError
 from paramiko import ProxyCommand
 from framework.logging.log import INFO,DEBUG,ERROR
 MAX_CHANNEL_CREATION_RETRIES = 100
+logging.getLogger("paramiko.transport").setLevel(logging.WARNING)
 class SSHClient:
     def __init__(self, ip, username=None, password=None, port=22, pkey=None, key_filename=None, timeout=10,
                  allow_agent=True, look_for_keys=True, compress=False, sock=None, gss_auth=False, gss_kex=False,
@@ -79,7 +81,7 @@ class SSHClient:
                     gss_trust_dns=self.gss_trust_dns,
                     passphrase=self.passphrase
                 )
-                print("Connection established successfully.")
+                DEBUG("Connection established successfully.")
                 return
             except paramiko.AuthenticationException as e:
                 INFO(self.ip)
@@ -104,7 +106,7 @@ class SSHClient:
             return False
         return transport.is_active()
     def _reconnect(self):
-        print("Attempting to reconnect...")
+        DEBUG("Attempting to reconnect...")
         self.connect()
     class TimeoutError(Exception):
         pass
@@ -145,7 +147,7 @@ class SSHClient:
         if self.client is None:
             raise Exception("SSH client not connected")
         if not self.is_connected():
-            INFO("SSH client not connected, attempting to reconnect...")
+            DEBUG("SSH client not connected, attempting to reconnect...")
             self._reconnect()
         if run_as_root:
             cmd = f"sudo {cmd}"

@@ -22,7 +22,8 @@ PARTITION=False
 def load_config(config_file):
     with open(config_file, 'r') as file:
         return json.load(file)
-def start_tcpdump(vm_obj, interface,ip, output_file,pac_type="icmp",packet_count=2000):
+def start_tcpdump(vm_obj, interface,ip, output_file,pac_type="icmp",
+                  packet_count=2000):
     # cmd = f"tcpdump -i {interface} -w {output_file} & echo $! > /tmp/tcpdump.pid"
     # if pac_type:
     # output_file = pac_type+output_file
