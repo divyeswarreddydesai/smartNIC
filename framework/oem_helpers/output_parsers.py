@@ -153,7 +153,7 @@ def parse_vm_output(output):
 def parse_flow(flow):
     if "ipv4" not in flow:
         return None
-    DEBUG(flow)
+    # DEBUG(flow)
     flow_patterns = [
         r"in_port\((ahv\d+)\).*?packets:(\d+).*?actions:(ahv\d+)",
         r"in_port\((ahv\d+)\).*?packets:(\d+).*?actions:(eth\d+)",

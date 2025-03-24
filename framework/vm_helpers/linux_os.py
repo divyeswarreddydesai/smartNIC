@@ -463,7 +463,7 @@ class LinuxOperatingSystem(AbstractOperatingSystem):
 
   def execute(self, cmd, timeout=60, retries=3, ignore_errors=False,
               poll_interval=5, tty=None, run_as_root=False,
-              retry_on_regex=None, background=False, log_response=False,
+              retry_on_regex=None, background=False, log_response=True,
               trailing_sleep=False, conn_acquire_timeout=360,
               close_ssh_connection=False, disable_safe_rm=True,
               log_command=False, async_=False, session_timeout=100):

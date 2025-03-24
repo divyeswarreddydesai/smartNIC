@@ -1,7 +1,7 @@
 {
   "cluster_host_config": {
     "ips": {
-        "pe_ip": "10.2.40.59"
+        "pe_ip": "10.2.43.122"
     },
     "guest_vm_driver": {
       "use_driver_default": true,
@@ -10,17 +10,18 @@
     },
     "vm_image": {
       "use_vm_default": true,
-      "bind": true,
+      "bind": false,
+      "uefi": true,
       "vm_image_location": 
-      "http://phx-net-fs.corp.nutanix.com/net-isos/Centos7UVM-2.1.qcow2",
+      "http://10.52.128.2/images/ahv/rocky9.4-uefi.qcow2",
       "vm_image_name": "vm_image"
     },
     "nic_config": {
       "bridge": "br0",
-      "port": "eth3",
-      "host_ip": "10.2.40.57",
-      "host_ip_2":"10.2.40.55",
-      "port_2": "eth7",
+      "host_ip": "",
+      "port": "",
+      "host_ip_2":"",
+      "port_2": "",
       "nic_family": ""
     },
     "vlan_config": {

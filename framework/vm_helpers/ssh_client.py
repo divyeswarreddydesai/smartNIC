@@ -141,7 +141,7 @@ class SSHClient:
         if error:
             raise error
         return exit_status
-    def execute(self, cmd, retries=3, timeout=60, tty=True, run_as_root=False, background=False, log_response=False, 
+    def execute(self, cmd, retries=3, timeout=60, tty=True, run_as_root=False, background=False, log_response=True, 
                 conn_acquire_timeout=1, close_ssh_connection=False, disable_safe_rm=True, log_command=True, 
                 async_=False, session_timeout=1000):
         if self.client is None:
@@ -176,9 +176,9 @@ class SSHClient:
                 stderr_data = stderr.read().decode()
                 stdout.channel.close()
                 DEBUG("read response")
-                if log_response:
-                    DEBUG(f"Command response: {stdout_data}")
-                    DEBUG(f"Command error: {stderr_data}")
+                # if log_response:
+                #     DEBUG(f"Command response: {stdout_data}")
+                #     DEBUG(f"Command error: {stderr_data}")
 
                 if close_ssh_connection:
                     self.close()

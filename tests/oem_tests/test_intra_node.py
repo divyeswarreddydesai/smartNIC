@@ -44,7 +44,7 @@ class IntraNodeTest(OemBaseTest):
         try:
             if bridge!="br0":
                 ahv_obj.execute(f"ovs-vsctl add-br {bridge}")
-            ahv_obj.execute("ovs-vsctl set Open_vSwitch . other_config:max-idle=10000")
+            ahv_obj.execute("ovs-vsctl set Open_vSwitch . other_config:max-idle=30000")
             ahv_obj.execute("ovs-vsctl set Open_vSwitch . other_config:hw-offload=true")
             ahv_obj.execute("systemctl restart openvswitch")
             ahv_obj.execute(f"echo switchdev > /sys/class/net/{nic_config['port']}/compat/devlink/mode")
@@ -121,7 +121,14 @@ class IntraNodeTest(OemBaseTest):
             run_and_check_output(setup,f"acli net.add_dhcp_pool bas_sub start={vlan_config['dhcp_start_ip']} end={vlan_config['dhcp_end_ip']}")
             network_name="bas_sub"    
         for i in vm_names:
-            run_and_check_output(setup,f"acli vm.create {i} memory=8G num_cores_per_vcpu=2 num_vcpus=2")
+            cmd = f"acli vm.create {i} memory=8G num_cores_per_vcpu=2 num_vcpus=2"
+            INFO(host_data["vm_image"])
+            if host_data["vm_image"]["uefi"] and \
+            not host_data["vm_image"]["use_vm_default"]:
+                cmd += " uefi_boot=true"
+                DEBUG(cmd)
+            run_and_check_output(setup,cmd)
+            pdb.set_trace()
             run_and_check_output(setup,f"acli vm.affinity_set {i} host_list={nic_config['host_ip']}")
             # setup.execute(f"acli vm.disk_create {i} create_size=50G container=Images bus=scsi index=1")        
             # setup.execute(f"acli vm.disk_create {i} create_size=200G container=Images bus=scsi index=2")
@@ -311,18 +318,24 @@ class IntraNodeTest(OemBaseTest):
         
         if not check_flows(flows,vm_obj_dict[vm_names[0]].vf_rep,vm_obj_dict[vm_names[1]].vf_rep,packet_count=9):
             ERROR("Failed to verify packet count using offloaded flows")
+            icmp_val = False
             STEP("Verification of packet count using offloaded flows: Fail")
         else:
+            icmp_val = True
             STEP("Verification of packet count using offloaded flows: Pass")
         icmp_packet_count1 = count_packets(ahv_obj, "/tmp/icmptcpdump_output1.pcap", vm_obj_dict[vm_names[0]].snic_ip, vm_obj_dict[vm_names[1]].snic_ip)
         INFO(f"ICMP packet count on vf1: {icmp_packet_count1}")
         icmp_packet_count2 = count_packets(ahv_obj, "/tmp/icmptcpdump_output2.pcap", vm_obj_dict[vm_names[1]].snic_ip, vm_obj_dict[vm_names[0]].snic_ip)
         INFO(f"ICMP packet count on vf2: {icmp_packet_count2}")
         if icmp_packet_count1 <= 1 and icmp_packet_count2 <= 1:
+            
+            icmp_packet_count_result = True
             STEP("Verification of packet count: Pass")
         else:
+            icmp_packet_count_result = False
             ERROR("ICMP packet count mismatch")
             STEP("Verification of packet count: Fail")
+            
         tc_ping_filters_vf1_ingress=json.loads(tc_ping_filters_vf1_ingress)
         
         # tc_ping_filters_vf2_egress=json.loads(tc_ping_filters_vf2_egress)
@@ -339,8 +352,8 @@ class IntraNodeTest(OemBaseTest):
         STEP("starting TCP test")
         start_tcpdump(ahv_obj, vf_list[0].vf_rep,vm_obj_dict[vm_names[0]].snic_ip, "/tmp/tcptcpdump_output1.pcap",pac_type="tcp")
         start_tcpdump(ahv_obj, vf_list[1].vf_rep,vm_obj_dict[vm_names[1]].snic_ip, "/tmp/tcptcpdump_output2.pcap",pac_type="tcp")
-        result=parse_iperf_output(start_iperf_test(vm_obj_dict[vm_names[0]],vm_obj_dict[vm_names[1]],udp=False),udp=False)
-        INFO(result)
+        result_tcp=parse_iperf_output(start_iperf_test(vm_obj_dict[vm_names[0]],vm_obj_dict[vm_names[1]],udp=False),udp=False)
+        INFO(result_tcp)
         tc_filters_vf1_ingress_tcp = get_tc_filter_details(ahv_obj, vm_obj_dict[vm_names[0]].vf_rep)
         tc_filters_vf2_ingress_tcp = get_tc_filter_details(ahv_obj, vm_obj_dict[vm_names[1]].vf_rep)
         tc_filters_br0_egress_tcp=get_tc_filter_details(ahv_obj, bridge,type="egress")
@@ -352,7 +365,7 @@ class IntraNodeTest(OemBaseTest):
         stop_tcpdump(ahv_obj, vm_obj_dict[vm_names[1]].vf_rep)
         if not check_flows(flows,vm_obj_dict[vm_names[0]].vf_rep,vm_obj_dict[vm_names[1]].vf_rep):
             STEP("Verification of TCP offloaded flows: Fail")
-            raise ExpError("Failed to add flows")
+            raise ExpError("Flows are not offloaded")
         else:
             STEP("Verification of TCP offloaded flows: Pass")
         # time.sleep(10)
@@ -360,13 +373,16 @@ class IntraNodeTest(OemBaseTest):
 
         tcp_packet_count1 = count_packets(ahv_obj, "/tmp/tcptcpdump_output1.pcap", vm_obj_dict[vm_names[0]].snic_ip, vm_obj_dict[vm_names[1]].snic_ip,pac_type="tcp")
         INFO(f"TCP packets on vf rep 1: {tcp_packet_count1}")
-        validate_packets(tcp_packet_count1,flows,result)
+        vf_rep_1_val = validate_packets(tcp_packet_count1,flows,result_tcp)
         tcp_packet_count2 = count_packets(ahv_obj, "/tmp/tcptcpdump_output2.pcap", vm_obj_dict[vm_names[1]].snic_ip, vm_obj_dict[vm_names[0]].snic_ip,pac_type="tcp")
         INFO(f"TCP packets on vf rep 2: {tcp_packet_count2}")
-        validate_packets(tcp_packet_count2,flows,result)
+        vf_rep_2_val = validate_packets(tcp_packet_count2,flows,result_tcp)
+        tcp_val = vf_rep_1_val and vf_rep_2_val
         if tcp_packet_count1 <= 1 and tcp_packet_count2 <= 1:
+            tcp_packet_count_result = True
             STEP("Verification of TCP packet count: Pass")
         else:
+            tcp_packet_count_result = False
             ERROR("TCP packet count mismatch")
             STEP("Verification of packet count: Fail")
         time.sleep(25)
@@ -379,8 +395,8 @@ class IntraNodeTest(OemBaseTest):
         stop_tcpdump(ahv_obj, vm_obj_dict[vm_names[1]].vf_rep)
         time.sleep(15)
         STEP("starting iperf test for UDP")
-        result=parse_iperf_output(start_iperf_test(vm_obj_dict[vm_names[0]],vm_obj_dict[vm_names[1]],udp=True),udp=True)
-        INFO(result)
+        result_udp=parse_iperf_output(start_iperf_test(vm_obj_dict[vm_names[0]],vm_obj_dict[vm_names[1]],udp=True),udp=True)
+        INFO(result_udp)
         tc_filters_vf1_ingress_udp = get_tc_filter_details(ahv_obj, vm_obj_dict[vm_names[0]].vf_rep)
         tc_filters_vf2_ingress_udp = get_tc_filter_details(ahv_obj, vm_obj_dict[vm_names[1]].vf_rep)
         tc_filters_br0_egress_udp=get_tc_filter_details(ahv_obj, bridge,type="egress")
@@ -389,7 +405,7 @@ class IntraNodeTest(OemBaseTest):
         
         if not check_flows(flows,vm_obj_dict[vm_names[0]].vf_rep,vm_obj_dict[vm_names[1]].vf_rep):
             STEP("Verification of UDP offloaded flows: Fail")
-            raise ExpError("Failed to add flows")
+            raise ExpError("Flows are not offloaded")
         else:
             STEP("Verification of UDP offloaded flows: Pass")
         STEP("TcpDump for UDP packets")
@@ -398,14 +414,44 @@ class IntraNodeTest(OemBaseTest):
         STEP(f"UDP TCPDump at {vm_obj_dict[vm_names[0]].vf_rep}")
         udp_packet_count1 = count_packets(ahv_obj, "/tmp/udptcpdump_output1.txt", vm_obj_dict[vm_names[0]].snic_ip, vm_obj_dict[vm_names[1]].snic_ip,pac_type="udp")
         INFO(f"UDP packets on vf rep 1: {udp_packet_count1}")
-        validate_packets(udp_packet_count1,flows,result)
+        vf_rep_1_val = validate_packets(udp_packet_count1,flows,result_udp)
         STEP(f"UDP TCPDump at {vm_obj_dict[vm_names[1]].vf_rep}")
         udp_packet_count2 = count_packets(ahv_obj, "/tmp/udptcpdump_output2.txt", vm_obj_dict[vm_names[1]].snic_ip, vm_obj_dict[vm_names[0]].snic_ip,pac_type="udp")
         INFO(f"UDP packets on vf rep 2: {udp_packet_count2}")
-        validate_packets(udp_packet_count2,flows,result)
+        vf_rep_2_val = validate_packets(udp_packet_count2,flows,result_udp)
+        udp_val = vf_rep_1_val and vf_rep_2_val
         # tc_tcp_filters_vf2_egress = get_tc_filter_details(ahv_obj, vm_obj_dict[vm_names[1]].vf_rep,type="egress")
-        
+        if udp_packet_count1 <= 1 and udp_packet_count2 <= 1:
+            udp_packet_count_result = True
+            STEP("Verification of UDP packet count: Pass")
+        else:
+            udp_packet_count_result = False
+            ERROR("UDP packet count at vf_rep is greater than 1")
         STEP(" iperf test: Ran")
+        STEP("Report :")
+        STEP("VM DATA:")
+        INFO(f"SRC IP: {vm_obj_dict[vm_names[0]].snic_ip}")
+        INFO(f"DST IP: {vm_obj_dict[vm_names[1]].snic_ip}")
+        INFO(f"SRC MAC: {vm_obj_dict[vm_names[0]].smartnic_interface_data.mac_address}")
+        INFO(f"DST MAC: {vm_obj_dict[vm_names[1]].smartnic_interface_data.mac_address}")
+        STEP("ICMP:")
+        INFO(f"Number of ICMP packets sent: 10")
+        INFO(f"Number of packets offloaded at vf_rep1: {icmp_packet_count1}")
+        INFO(f"Number of packets offloaded at vf_rep2: {icmp_packet_count2}")
+        INFO(f"ICMP packet count verification: {'PASS' if icmp_packet_count_result else 'FAIL'}")
+        INFO(f"Packet count in the offloaded Flows : {'PASS' if icmp_val else 'FAIL'}")
+        STEP("TCP:")
+        INFO(f"Number of TCP packets sent: {result_tcp['packets_sent']}")
+        INFO(f"Number of packets offloaded at vf_rep1: {tcp_packet_count1}")
+        INFO(f"Number of packets offloaded at vf_rep2: {tcp_packet_count2}")
+        INFO(f"TCP packet count verification: {'PASS' if tcp_packet_count_result else 'FAIL'}")
+        INFO(f"Packet count in the offloaded Flows : {'PASS' if tcp_val else 'FAIL'}")
+        STEP("UDP:")
+        INFO(f"Number of UDP packets sent: {result_udp['packets_sent']}")
+        INFO(f"Number of packets offloaded at vf_rep1: {udp_packet_count1}")
+        INFO(f"Number of packets offloaded at vf_rep2: {udp_packet_count2}")
+        INFO(f"UDP packet count verification: {'PASS' if udp_packet_count_result else 'FAIL'}")
+        INFO(f"Packet count in the offloaded Flows : {'PASS' if udp_val else 'FAIL'}")
         
         if self.tc_filter:
             STEP("tc filters of ping traffic:")

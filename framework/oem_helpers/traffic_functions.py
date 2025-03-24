@@ -106,13 +106,16 @@ def validate_packets(vf_rep_packet_count,flows,iperf_output):
         flow = [flo for flo in flows if iperf_output["packets_sent"] <= flo["packets"]]
         if len(flow)>0:
             INFO("Verification of TCP packet count : PASSED")
+            return True
         if len(flow)==0:
             INFO(f"iperf_packets : {iperf_output['packets_sent']}")
             INFO(flows)
             ERROR("Count of packets sent by iperf is not matching with the packet count in the flow")
+            return False
     else:
         ERROR("Count of packets at the VF representor is greater than 1")
         ERROR(f"percentage of packets offloaded : ({(vf_rep_packet_count/iperf_output['packets_sent'])*100})")
+        return False
         
         
 def start_iperf_test(vm_obj_1,vm_obj_2,udp):
@@ -125,8 +128,8 @@ def start_iperf_test(vm_obj_1,vm_obj_2,udp):
     except Exception as e:
         ERROR(f"Failed to stop iperf server: {e}")
     vm_obj_2.ssh_obj.start_iperf_server(udp)
-    result = vm_obj_1.ssh_obj.run_iperf_client(vm_obj_2.snic_ip,udp,duration=300)
-    DEBUG(result)
+    result = vm_obj_1.ssh_obj.run_iperf_client(vm_obj_2.snic_ip,udp,duration=30)
+    # DEBUG(result)
     # Display the results
     print(f"iperf test results from {vm_obj_1.snic_ip} to {vm_obj_2.snic_ip}:\n{result}")
     return result
