@@ -102,7 +102,7 @@ class InterNodeTest(OemBaseTest):
         DEBUG(f"Partition 1: {self.partition}, Partition 2: {self.partition_2}")
         DEBUG(f"Partitioned Host 1: {host_1}, Partitioned Host 2: {host_2}")
         DEBUG(f"Partitioned Port 1: {port_1}, Partitioned Port 2: {port_2}")
-        pdb.set_trace()
+        # pdb.set_trace()
         vm_dict=parse_vm_output(self.cvm_obj.execute("acli vm.list")["stdout"])
         vm_dict = {name: vm_dict[name] for name in vm_names if name in vm_dict}
         for name,id in vm_dict.items():
@@ -139,7 +139,7 @@ class InterNodeTest(OemBaseTest):
             if f"host_name: \"{host_1 if idx==0 else host_2}\"" not in res:
                 raise ExpError(f"Failed to assign VM to host {host_1 if idx==0 else host_2}")
         INFO("waiting for IPs to be assigned")
-        pdb.set_trace()
+        # pdb.set_trace()
         time.sleep(60)
             
     
@@ -210,7 +210,7 @@ class InterNodeTest(OemBaseTest):
             ahv_obj.execute(f"ip link set dev {port} up")
             ahv_obj.execute(f"ip link set dev {used_vf.vf_rep} up")
             ahv_obj.execute(f"ovs-ofctl add-flow {bridge} \"in_port={used_vf.vf_rep},dl_src={vm_obj_dict[vm_names[i]].smartnic_interface_data.mac_address},dl_dst={vm_obj_dict[vm_names[1-i]].smartnic_interface_data.mac_address},actions=output:{port}\"")
-        pdb.set_trace()
+        # pdb.set_trace()
         STEP("packet count tests")
         prot=["icmp","udp","tcp"]
         for ahv_obj in [ahv_obj_1,ahv_obj_2]:
@@ -249,12 +249,12 @@ class InterNodeTest(OemBaseTest):
                 STEP("Verification of packet count using offloaded flows: Fail")
             else:
                 STEP("Verification of packet count using offloaded flows: Pass")
-        pdb.set_trace()
+        # pdb.set_trace()
         icmp_packet_count1 = count_packets(ahv_obj_1, "/tmp/icmptcpdump_output1.pcap", vm_obj_dict[vm_names[0]].snic_ip, vm_obj_dict[vm_names[1]].snic_ip)
         INFO(f"ICMP packet count on vf1: {icmp_packet_count1}")
         icmp_packet_count2 = count_packets(ahv_obj_2, "/tmp/icmptcpdump_output2.pcap", vm_obj_dict[vm_names[1]].snic_ip, vm_obj_dict[vm_names[0]].snic_ip)
         INFO(f"ICMP packet count on vf2: {icmp_packet_count2}")
-        pdb.set_trace()
+        # pdb.set_trace()
         if icmp_packet_count1 <= 1 and icmp_packet_count2 <= 1:
             STEP("Verification of packet count: Pass")
         else:
@@ -264,13 +264,13 @@ class InterNodeTest(OemBaseTest):
         
         # tc_ping_filters_vf2_egress=json.loads(tc_ping_filters_vf2_egress)
         tc_ping_filters_vf2_ingress=json.loads(tc_ping_filters_vf2_ingress)
-        pdb.set_trace()
+        # pdb.set_trace()
         if check_tc_filters(tc_ping_filters_vf1_ingress,port_1) and check_tc_filters((tc_ping_filters_vf2_ingress),port_2):
             STEP("Verification of tc filters ping traffic: Pass")
         else:
             ERROR("Failed to verify tc filters")
             STEP("Verification of tc filters of ping traffic: Fail")
-        pdb.set_trace()
+        # pdb.set_trace()
         time.sleep(15)
         STEP("iperf test")
         STEP("starting TCP test")
@@ -289,7 +289,7 @@ class InterNodeTest(OemBaseTest):
         flows = [flows1,flows2]
         stop_tcpdump(ahv_obj, vm_obj_dict[vm_names[0]].vf_rep)
         stop_tcpdump(ahv_obj, vm_obj_dict[vm_names[1]].vf_rep)
-        pdb.set_trace()
+        # pdb.set_trace()
         for i in range(2):
             if not check_flows(flows[i],vm_obj_dict[vm_names[i]].vf_rep,port_1 if i==0 else port_2):
                 STEP("Verification of TCP offloaded flows: Fail")
@@ -297,20 +297,20 @@ class InterNodeTest(OemBaseTest):
             else:
                 STEP("Verification of TCP offloaded flows: Pass")
         STEP("TCPDump for TCP packets")
-        pdb.set_trace()
+        # pdb.set_trace()
         tcp_packet_count1 = count_packets(ahv_obj_1, "/tmp/tcptcpdump_output1.pcap", vm_obj_dict[vm_names[0]].snic_ip, vm_obj_dict[vm_names[1]].snic_ip,pac_type="tcp")
         INFO(f"TCP packets on vf rep 1: {tcp_packet_count1}")
         validate_packets(tcp_packet_count1,flows1,result)
         tcp_packet_count2 = count_packets(ahv_obj_2, "/tmp/tcptcpdump_output2.pcap", vm_obj_dict[vm_names[1]].snic_ip, vm_obj_dict[vm_names[0]].snic_ip,pac_type="tcp")
         INFO(f"TCP packets on vf rep 2: {tcp_packet_count2}")
         validate_packets(tcp_packet_count2,flows2,result)
-        pdb.set_trace()
+        # pdb.set_trace()
         if tcp_packet_count1 <= 1 and tcp_packet_count2 <= 1:
             STEP("Verification of TCP packet count: Pass")
         else:
             ERROR("TCP packet count mismatch")
             STEP("Verification of packet count: Fail")
-        pdb.set_trace()
+        # pdb.set_trace()
         time.sleep(25)
         for i in range(2):
             start_tcpdump(ahv_objs[i],vm_obj_dict[vm_names[i]].vf_rep,vm_obj_dict[vm_names[i]].snic_ip, f"/tmp/udptcpdump_output{i+1}.txt",pac_type="udp")
@@ -331,7 +331,7 @@ class InterNodeTest(OemBaseTest):
         flows2=parse_ahv_port_flows(ahv_obj_2)
         DEBUG(flows2)
         flows = [flows1,flows2]
-        pdb.set_trace()
+        # pdb.set_trace()
         for i in range(2):
             if not check_flows(flows[i],vm_obj_dict[vm_names[i]].vf_rep,port_1 if i==0 else port_2):
                 STEP("Verification of UDP offloaded flows: Fail")

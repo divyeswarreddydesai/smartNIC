@@ -135,7 +135,7 @@ class IntraNodeTest(OemBaseTest):
             if f"host_name: \"{nic_config['host_ip']}\"" not in res:
                 raise ExpError(f"Failed to assign VM to host {nic_config['host_ip']}")
         INFO("waiting for IPs to be assigned")
-        pdb.set_trace()
+        # pdb.set_trace()
         time.sleep(60)
     def test_intra_node(self):
         setup=self.cvm_obj
