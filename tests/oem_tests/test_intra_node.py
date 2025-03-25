@@ -94,6 +94,10 @@ class IntraNodeTest(OemBaseTest):
             # Find the common GroupLabel
             group_label_counter = Counter(group_labels)
             common_group_label = [label for label, count in group_label_counter.items() if count == len(nic_vf_data["Virtual Functions"])]
+            def_val = "7e1226df-7f65-58a9-9973-4c3b25daeeee"
+            if def_val in common_group_label:
+                common_group_label.remove(def_val)  
+            DEBUG(f"Common Group Label: {common_group_label}")
             if not common_group_label:
                 raise ExpError("No common GroupLabel found among all VFs.")
             group_uuid = common_group_label[0]
