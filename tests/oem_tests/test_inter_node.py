@@ -34,7 +34,7 @@ class InterNodeTest(OemBaseTest):
                 raise ExpError(f"Failed to set active member: {e}")
             try:
                 ahv.execute(
-                    "ovs-vsctl set Open_vSwitch . other_config:max-idle=30000")
+                    "ovs-vsctl set Open_vSwitch . other_config:max-idle=10000")
                 ahv.execute(
                     "ovs-vsctl set Open_vSwitch . other_config:hw-offload=true")
                 ahv.execute(
@@ -220,6 +220,7 @@ class InterNodeTest(OemBaseTest):
             ahv_obj.execute(f"ip link set dev {port} up")
             ahv_obj.execute(f"ip link set dev {used_vf.vf_rep} up")
             ahv_obj.execute(f"ovs-ofctl add-flow {bridge} \"in_port={used_vf.vf_rep},dl_src={vm_obj_dict[vm_names[i]].smartnic_interface_data.mac_address},dl_dst={vm_obj_dict[vm_names[1-i]].smartnic_interface_data.mac_address},actions=output:{port}\"")
+            ahv_obj.execute(f"ovs-ofctl add-flow {bridge} \"in_port={port},dl_src={vm_obj_dict[vm_names[1-i]].smartnic_interface_data.mac_address},dl_dst={vm_obj_dict[vm_names[i]].smartnic_interface_data.mac_address},actions=output:{used_vf.vf_rep}\"")
         # pdb.set_trace()
         STEP("packet count tests")
         prot=["icmp","udp","tcp"]
@@ -251,6 +252,9 @@ class InterNodeTest(OemBaseTest):
         for i in range(2):
             if not check_flows(flows[i],vm_obj_dict[vm_names[i]].vf_rep,port_1 if i==0 else port_2):
                 STEP("Verification of ping offloaded flows: Fail")
+                INFO(flows)
+                INFO(tc_ping_filters_vf1_ingress)
+                INFO(tc_ping_filters_vf2_ingress)
                 raise ExpError("Flows are not offloaded in Ping traffic")
 
             else:
@@ -308,7 +312,10 @@ class InterNodeTest(OemBaseTest):
         for i in range(2):
             if not check_flows(flows[i],vm_obj_dict[vm_names[i]].vf_rep,port_1 if i==0 else port_2):
                 STEP("Verification of TCP offloaded flows: Fail")
-                raise ExpError("Failed to add flows")
+                INFO(flows)
+                INFO(tc_filters_vf1_ingress_tcp)
+                INFO(tc_filters_vf2_ingress_tcp)
+                raise ExpError("Flows are not offloaded in Ping traffic")
             else:
                 STEP("Verification of TCP offloaded flows: Pass")
         STEP("TCPDump for TCP packets")
@@ -353,7 +360,10 @@ class InterNodeTest(OemBaseTest):
         for i in range(2):
             if not check_flows(flows[i],vm_obj_dict[vm_names[i]].vf_rep,port_1 if i==0 else port_2):
                 STEP("Verification of UDP offloaded flows: Fail")
-                raise ExpError("Failed to add flows")
+                INFO(flows)
+                INFO(tc_filters_vf1_ingress_udp)
+                INFO(tc_filters_vf2_ingress_udp)
+                raise ExpError("Flows are not offloaded in Ping traffic")
             else:
                 STEP("Verification of UDP offloaded flows: Pass")
         STEP("TcpDump for UDP packets")

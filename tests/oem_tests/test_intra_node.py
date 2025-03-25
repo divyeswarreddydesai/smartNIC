@@ -44,7 +44,7 @@ class IntraNodeTest(OemBaseTest):
         try:
             if bridge!="br0":
                 ahv_obj.execute(f"ovs-vsctl add-br {bridge}")
-            ahv_obj.execute("ovs-vsctl set Open_vSwitch . other_config:max-idle=30000")
+            ahv_obj.execute("ovs-vsctl set Open_vSwitch . other_config:max-idle=10000")
             ahv_obj.execute("ovs-vsctl set Open_vSwitch . other_config:hw-offload=true")
             ahv_obj.execute("systemctl restart openvswitch")
             ahv_obj.execute(f"echo switchdev > /sys/class/net/{nic_config['port']}/compat/devlink/mode")
@@ -128,7 +128,7 @@ class IntraNodeTest(OemBaseTest):
                 cmd += " uefi_boot=true"
                 DEBUG(cmd)
             run_and_check_output(setup,cmd)
-            pdb.set_trace()
+            # pdb.set_trace()
             run_and_check_output(setup,f"acli vm.affinity_set {i} host_list={nic_config['host_ip']}")
             # setup.execute(f"acli vm.disk_create {i} create_size=50G container=Images bus=scsi index=1")        
             # setup.execute(f"acli vm.disk_create {i} create_size=200G container=Images bus=scsi index=2")
@@ -310,7 +310,10 @@ class IntraNodeTest(OemBaseTest):
         
         if not check_flows(flows,vm_obj_dict[vm_names[0]].vf_rep,vm_obj_dict[vm_names[1]].vf_rep):
             STEP("Verification of ping offloaded flows: Fail")
-            raise ExpError("Failed to add flows")
+            INFO(flows)
+            INFO(tc_ping_filters_vf1_ingress)
+            INFO(tc_ping_filters_vf2_ingress)
+            raise ExpError("Flows are not offloaded")
         else:
             STEP("Verification of ping offloaded flows: Pass")
         
@@ -365,6 +368,9 @@ class IntraNodeTest(OemBaseTest):
         stop_tcpdump(ahv_obj, vm_obj_dict[vm_names[1]].vf_rep)
         if not check_flows(flows,vm_obj_dict[vm_names[0]].vf_rep,vm_obj_dict[vm_names[1]].vf_rep):
             STEP("Verification of TCP offloaded flows: Fail")
+            INFO(flows)
+            INFO(tc_filters_vf1_ingress_tcp)
+            INFO(tc_filters_vf2_ingress_tcp)
             raise ExpError("Flows are not offloaded")
         else:
             STEP("Verification of TCP offloaded flows: Pass")
@@ -405,6 +411,9 @@ class IntraNodeTest(OemBaseTest):
         
         if not check_flows(flows,vm_obj_dict[vm_names[0]].vf_rep,vm_obj_dict[vm_names[1]].vf_rep):
             STEP("Verification of UDP offloaded flows: Fail")
+            INFO(flows)
+            INFO(tc_filters_vf1_ingress_udp)
+            INFO(tc_filters_vf2_ingress_udp)
             raise ExpError("Flows are not offloaded")
         else:
             STEP("Verification of UDP offloaded flows: Pass")
