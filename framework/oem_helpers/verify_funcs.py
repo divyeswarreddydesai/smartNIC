@@ -52,6 +52,67 @@ def firmware_check(setup=None,host_ip=None,port=None,vf=False,driver_version=Non
     # INFO("{0} firmware version is {1}".format(port,))
     # else:
     #     raise ExpError(f"NIC doesn't support DPOFFLOAD")
+# def port_selection(setup,host_ip,port,excluse_hosts=[],exclude_ports=[]):
+#     fin_host_ip=""
+#     fin_port=""
+#     val1=(host_ip=="")
+#     val2=(port=="")
+#     if val1:
+#        hosts = list(setup.AHV_nic_port_map.keys())
+#        hosts=random.sample(hosts,len(hosts))
+#        INFO(hosts)
+#     else:
+#         hosts=[host_ip]
+            
+#     hosts=[i for i in hosts if i not in excluse_hosts]
+#     for i in hosts:
+#         if val2:
+#             ports = list(setup.AHV_nic_port_map[i].keys())
+#             ports=random.sample(ports,len(ports))
+#             DEBUG(ports)
+#         else:
+#             ports=[port]
+#         res=setup.AHV_obj_dict[i].execute("ovs-appctl bond/show")['stdout']
+#         new_ports=ports[:]
+#         DEBUG(ports)
+#         for j in ports:
+#             DEBUG(j)
+#             DEBUG(j not in res)
+#             DEBUG((j+": disabled") in res)
+#             if (j not in res) or ((j+": disabled") in res):
+#                 DEBUG(f"removing port:{j}")
+#                 new_ports.remove(j)
+#         DEBUG(new_ports)
+#         new_ports=[j for j in new_ports if j not in exclude_ports]
+#         for j in new_ports:
+#             if setup.AHV_nic_port_map[i][j].get("supported_capabilities") :
+#                 INFO(setup.AHV_nic_port_map[i][j])
+#                 if len(setup.AHV_nic_port_map[i][j]["supported_capabilities"])>0 and setup.AHV_nic_port_map[i][j]['nic_type']!="Unknown":
+#                     try:
+#                         INFO(f"Checking firmware and driver version for port {j} on host {i}")
+#                         firmware_check(setup=setup,host_ip=i,port=j)
+#                         fin_host_ip=i
+#                         fin_port=j
+#                         break
+#                     except ExpError as e:
+#                         continue
+#                 if setup.AHV_nic_port_map[i][j]['nic_type']=="Unknown":
+#                     DEBUG(f"port {j} is of type Unknown only Lx and Dx are supported")
+#                     continue
+#         if fin_host_ip!="" and fin_port!="":
+#             break
+#     if fin_host_ip=="" and fin_port=="":
+#         if val1 and val2:
+#             raise ExpError("No NIC found with DPOFFLOAD support")
+#         elif val1:
+#             raise ExpError(f"No NIC found with DPOFFLOAD support with port {port} on the hosts")
+#         elif val2:
+#             raise ExpError(f"No NIC found with DPOFFLOAD support on host {host_ip}")
+#         else:
+#             raise ExpError(f"NIC with port {port} on host {host_ip} doesn't support DPOFFLOAD")
+        
+#     return fin_host_ip,fin_port
+
 def port_selection(setup,host_ip,port,excluse_hosts=[],exclude_ports=[]):
     fin_host_ip=""
     fin_port=""
@@ -64,26 +125,16 @@ def port_selection(setup,host_ip,port,excluse_hosts=[],exclude_ports=[]):
     else:
         hosts=[host_ip]
             
-    hosts=[i for i in hosts if i not in excluse_hosts]
+    hosts = [i for i in hosts if i not in excluse_hosts]
+    new_hosts = hosts[:]
     for i in hosts:
         if val2:
             ports = list(setup.AHV_nic_port_map[i].keys())
-            ports=random.sample(ports,len(ports))
+            ports = random.sample(ports,len(ports)) 
             DEBUG(ports)
         else:
-            ports=[port]
-        res=setup.AHV_obj_dict[i].execute("ovs-appctl bond/show")['stdout']
-        new_ports=ports[:]
-        DEBUG(ports)
-        for j in ports:
-            DEBUG(j)
-            DEBUG(j not in res)
-            DEBUG((j+": disabled") in res)
-            if (j not in res) or ((j+": disabled") in res):
-                DEBUG(f"removing port:{j}")
-                new_ports.remove(j)
-        DEBUG(new_ports)
-        new_ports=[j for j in new_ports if j not in exclude_ports]
+            ports = [port]
+        new_ports = ports[:]
         for j in new_ports:
             if setup.AHV_nic_port_map[i][j].get("supported_capabilities") :
                 INFO(setup.AHV_nic_port_map[i][j])
@@ -91,17 +142,19 @@ def port_selection(setup,host_ip,port,excluse_hosts=[],exclude_ports=[]):
                     try:
                         INFO(f"Checking firmware and driver version for port {j} on host {i}")
                         firmware_check(setup=setup,host_ip=i,port=j)
-                        fin_host_ip=i
-                        fin_port=j
                         break
                     except ExpError as e:
+                        new_ports.remove(j)
                         continue
                 if setup.AHV_nic_port_map[i][j]['nic_type']=="Unknown":
+                    if not(val1 or val2):
+                        raise ExpError(f"NIC with port {port} on host {host_ip} is a Non Mellanox NIC provided which doesn't support DPOFFLOAD")
                     DEBUG(f"port {j} is of type Unknown only Lx and Dx are supported")
+                    new_ports.remove(j)
                     continue
-        if fin_host_ip!="" and fin_port!="":
-            break
-    if fin_host_ip=="" and fin_port=="":
+        if len(new_ports)==0:
+            new_hosts.remove(i)
+    if len(new_hosts)==0:
         if val1 and val2:
             raise ExpError("No NIC found with DPOFFLOAD support")
         elif val1:
@@ -110,5 +163,31 @@ def port_selection(setup,host_ip,port,excluse_hosts=[],exclude_ports=[]):
             raise ExpError(f"No NIC found with DPOFFLOAD support on host {host_ip}")
         else:
             raise ExpError(f"NIC with port {port} on host {host_ip} doesn't support DPOFFLOAD")
-        
+    for i in new_hosts:
+        if val2:
+            ports = list(setup.AHV_nic_port_map[i].keys())
+            ports = random.sample(ports,len(ports))
+            DEBUG(ports)
+        else:
+            ports = new_ports
+        for j in ports:
+            res=setup.AHV_obj_dict[i].execute("ovs-appctl bond/show")['stdout']
+            if (j not in res) or ((j+": disabled") in res):
+                DEBUG(f"removing port:{j}")
+                continue
+            fin_host_ip=i
+            fin_port=j
+            break
+        if fin_host_ip!="" and fin_port!="":
+            break
+    if fin_host_ip=="" and fin_port=="":
+        if val1 and val2:
+            raise ExpError("No NIC found with DPOFFLOAD support and part of br0 bond")
+        elif val1:
+            raise ExpError(f"No NIC found with DPOFFLOAD support and part of br0 bond with port {port} on the hosts")
+        elif val2:
+            raise ExpError(f"No NIC found with DPOFFLOAD support and part of br0 bond on host {host_ip}")
+        else:
+            raise ExpError(f"NIC with port {port} on host {host_ip} is not a part of br0 bond even though it supports DPOFFLOAD")
     return fin_host_ip,fin_port
+        

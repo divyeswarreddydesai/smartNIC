@@ -21,23 +21,24 @@ class IntraNodeTest(OemBaseTest):
         # STEP("Firmware and driver version check of Physical NIC")
         # host_ip=nic_config['host_ip']
         # port=nic_config['port']
-        if nic_config['host_ip']=="" or nic_config['port']=="":
-            STEP("Selecting Port with DPOFFLOAD support")
-            nic_config['host_ip'],nic_config['port']=port_selection(setup,nic_config['host_ip'],nic_config['port'])
-            INFO(f"Selected port {nic_config['port']} on host {nic_config['host_ip']}")
-        else:
-            res=setup.AHV_obj_dict[nic_config['host_ip']].execute("ovs-appctl bond/show")['stdout']
-            if (nic_config['port'] not in res):
-                raise ExpError(f"Port {nic_config['port']} not found in br0 bond of host {nic_config['host_ip']}")
-            elif ((nic_config['port']+": disabled") in res):
-                raise ExpError(f"Port {nic_config['port']} is not connected/disabled, in br0 bond of host {nic_config['host_ip']}")
-            if len(setup.AHV_nic_port_map[nic_config['host_ip']][nic_config['port']]["supported_capabilities"])>0 and setup.AHV_nic_port_map[nic_config['host_ip']][nic_config['port']]['nic_type']!="Unknown":
-                if not skip_driver:
-                    STEP(f"Firmware and driver version check of Physical NIC {nic_config['port']} on host {nic_config['host_ip']}")
-                    firmware_check(setup=setup,host_ip=nic_config['host_ip'],port=nic_config['port'])
-                    STEP("Firmware and driver version check of Physical NIC: PASS")
-            else:
-                raise ExpError(f"NIC doesn't support DPOFFLOAD, only ConnectX-6 Lx and Dx are supported")
+        # if nic_config['host_ip']=="" or nic_config['port']=="":
+        #     STEP("Selecting Port with DPOFFLOAD support")
+        #     nic_config['host_ip'],nic_config['port']=port_selection(setup,nic_config['host_ip'],nic_config['port'])
+        #     INFO(f"Selected port {nic_config['port']} on host {nic_config['host_ip']}")
+        # else:
+        #     res=setup.AHV_obj_dict[nic_config['host_ip']].execute("ovs-appctl bond/show")['stdout']
+        #     if (nic_config['port'] not in res):
+        #         raise ExpError(f"Port {nic_config['port']} not found in br0 bond of host {nic_config['host_ip']}")
+        #     elif ((nic_config['port']+": disabled") in res):
+        #         raise ExpError(f"Port {nic_config['port']} is not connected/disabled, in br0 bond of host {nic_config['host_ip']}")
+        #     if len(setup.AHV_nic_port_map[nic_config['host_ip']][nic_config['port']]["supported_capabilities"])>0 and setup.AHV_nic_port_map[nic_config['host_ip']][nic_config['port']]['nic_type']!="Unknown":
+        #         if not skip_driver:
+        #             STEP(f"Firmware and driver version check of Physical NIC {nic_config['port']} on host {nic_config['host_ip']}")
+        #             firmware_check(setup=setup,host_ip=nic_config['host_ip'],port=nic_config['port'])
+        #             STEP("Firmware and driver version check of Physical NIC: PASS")
+        #     else:
+        #         raise ExpError(f"NIC doesn't support DPOFFLOAD, only ConnectX-6 Lx and Dx are supported")
+        nic_config['host_ip'],nic_config['port']=port_selection(setup,nic_config['host_ip'],nic_config['port'])
         bridge=nic_config.get("bridge","br0")
         ahv_obj=setup.AHV_obj_dict[nic_config['host_ip']]
         INFO("Creatig VFs and Network")
@@ -449,20 +450,20 @@ class IntraNodeTest(OemBaseTest):
         INFO(f"DST MAC: {vm_obj_dict[vm_names[1]].smartnic_interface_data.mac_address}")
         STEP("ICMP:")
         INFO(f"Number of ICMP packets sent: 10")
-        INFO(f"Number of packets offloaded at vf_rep1: {icmp_packet_count1}")
-        INFO(f"Number of packets offloaded at vf_rep2: {icmp_packet_count2}")
+        INFO(f"Number of packets at vf_rep1: {icmp_packet_count1}")
+        INFO(f"Number of packets at vf_rep2: {icmp_packet_count2}")
         INFO(f"ICMP packet count verification: {'PASS' if icmp_packet_count_result else 'FAIL'}")
         INFO(f"Packet count in the offloaded Flows : {'PASS' if icmp_val else 'FAIL'}")
         STEP("TCP:")
         INFO(f"Number of TCP packets sent: {result_tcp['packets_sent']}")
-        INFO(f"Number of packets offloaded at vf_rep1: {tcp_packet_count1}")
-        INFO(f"Number of packets offloaded at vf_rep2: {tcp_packet_count2}")
+        INFO(f"Number of packets at vf_rep1: {tcp_packet_count1}")
+        INFO(f"Number of packets at vf_rep2: {tcp_packet_count2}")
         INFO(f"TCP packet count verification: {'PASS' if tcp_packet_count_result else 'FAIL'}")
         INFO(f"Packet count in the offloaded Flows : {'PASS' if tcp_val else 'FAIL'}")
         STEP("UDP:")
         INFO(f"Number of UDP packets sent: {result_udp['packets_sent']}")
-        INFO(f"Number of packets offloaded at vf_rep1: {udp_packet_count1}")
-        INFO(f"Number of packets offloaded at vf_rep2: {udp_packet_count2}")
+        INFO(f"Number of packets at vf_rep1: {udp_packet_count1}")
+        INFO(f"Number of packets at vf_rep2: {udp_packet_count2}")
         INFO(f"UDP packet count verification: {'PASS' if udp_packet_count_result else 'FAIL'}")
         INFO(f"Packet count in the offloaded Flows : {'PASS' if udp_val else 'FAIL'}")
         
