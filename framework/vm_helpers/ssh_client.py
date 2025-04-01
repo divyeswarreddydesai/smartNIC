@@ -15,7 +15,7 @@ MAX_CHANNEL_CREATION_RETRIES = 100
 logging.getLogger("paramiko.transport").setLevel(logging.WARNING)
 class SSHClient:
     def __init__(self, ip, username=None, password=None, port=22, pkey=None, key_filename=None, timeout=10,
-                 allow_agent=True, look_for_keys=True, compress=False, sock=None, gss_auth=False, gss_kex=False,
+                 allow_agent=True, look_for_keys=False, compress=False, sock=None, gss_auth=False, gss_kex=False,
                  gss_deleg_creds=True, gss_host=None, banner_timeout=10, auth_timeout=10, gss_trust_dns=True,
                  max_connection_attempts=4,proxy=None, proxy_key=None, proxy_port=None,
                  passphrase=None):
