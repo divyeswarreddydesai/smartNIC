@@ -123,6 +123,8 @@ def port_selection(setup,host_ip,port,excluse_hosts=[],exclude_ports=[]):
        hosts=random.sample(hosts,len(hosts))
        INFO(hosts)
     else:
+        if host_ip not in setup.AHV_ip_list:
+            raise ExpError(f"Host {host_ip} is not a part of the cluster")
         hosts=[host_ip]
             
     hosts = [i for i in hosts if i not in excluse_hosts]
@@ -184,10 +186,13 @@ def port_selection(setup,host_ip,port,excluse_hosts=[],exclude_ports=[]):
         if val1 and val2:
             raise ExpError("No NIC found with DPOFFLOAD support and part of br0 bond")
         elif val1:
-            raise ExpError(f"No NIC found with DPOFFLOAD support and part of br0 bond with port {port} on the hosts")
+            raise ExpError(f"No NIC found with DPOFFLOAD support with port {port} on the hosts")
         elif val2:
-            raise ExpError(f"No NIC found with DPOFFLOAD support and part of br0 bond on host {host_ip}")
+            raise ExpError(f"No NIC found with DPOFFLOAD support on host {host_ip}")
         else:
-            raise ExpError(f"NIC with port {port} on host {host_ip} is not a part of br0 bond even though it supports DPOFFLOAD")
+            if port not in setup.AHV_obj_dict[i].execute("ovs-appctl bond/show")['stdout']:
+                raise ExpError(f"NIC with port {port} on host {host_ip} is not a part of br0 bond though it supports DPOFFLOAD")
+            elif (port+": disabled") in setup.AHV_obj_dict[i].execute("ovs-appctl bond/show")['stdout']:
+                raise ExpError(f"NIC with port {port} on host {host_ip} is disabled though it supports DPOFFLOAD and part of br0 bond")
     return fin_host_ip,fin_port
         
