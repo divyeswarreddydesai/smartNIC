@@ -14,12 +14,15 @@ class OemBaseTest:
         INFO(self.oem_config["cluster_host_config"]["ips"]["pe_ip"])
         self.cvm_obj = CVM(self.oem_config["cluster_host_config"]["ips"]["pe_ip"])
         vm_image_creation(self.cvm_obj,self.oem_config)
+        self.hosts = None
+        self.ports = None
         self.partition = False
         self.partition_2 = False
         self.vm_names = None
         self.vm_obj_dict = None
         self.vm_dict = None
         self.tc_filter = kwargs.get("tc_filter",None)
+        self.ahv_objs = None
         # self.ovn_validator=OvnValidator(self.setup_obj)
         # self.entities = self.entity_manager.create_entities()
         # self.setup()

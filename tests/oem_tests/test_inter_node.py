@@ -187,9 +187,8 @@ class InterNodeTest(OemBaseTest):
             host = host_1 if i==0 else host_2
             port = port_1 if i==0 else port_2 
             ahv_obj = ahv_obj_1 if i==0 else ahv_obj_2
-            vf_rep_data = json.loads(ahv_obj_1.execute("ip -j -d link show")
-                                     ["stdout"] if i==0 else ahv_obj_2.execute(
-                                         "ip -j -d link show")["stdout"])
+            vf_rep_data = json.loads(ahv_obj.execute("ip -j -d link show")
+                                     ["stdout"])
             res = self.cvm_obj.execute(f"/home/nutanix/tmp/partition.py show {host} {port}")
             nic_vf_data = read_nic_data(res["stdout"])
             used_vf = None
@@ -198,6 +197,7 @@ class InterNodeTest(OemBaseTest):
                     for vf_rep in vf_rep_data:
                         if (str(vf.vf_idx) in vf_rep.get("phys_port_name","") and vf_rep.get('parentdev','')==nic_vf_data['Physical Functions'][0].sbdf):
                             # INFO(rep)
+                            # ahv_obj.execute(f"ip link set {port} vf {vf.vf_idx} mac {vm_obj_dict[vm_names[i]].smartnic_interface_data.mac_address}")
                             vf.vf_rep=vf_rep["ifname"]
                             used_vf = vf
                             break
@@ -221,17 +221,26 @@ class InterNodeTest(OemBaseTest):
             ahv_obj.execute(f"ip link set dev {used_vf.vf_rep} up")
             ahv_obj.execute(f"ovs-ofctl add-flow {bridge} \"in_port={used_vf.vf_rep},dl_src={vm_obj_dict[vm_names[i]].smartnic_interface_data.mac_address},dl_dst={vm_obj_dict[vm_names[1-i]].smartnic_interface_data.mac_address},actions=output:{port}\"")
             ahv_obj.execute(f"ovs-ofctl add-flow {bridge} \"in_port={port},dl_src={vm_obj_dict[vm_names[1-i]].smartnic_interface_data.mac_address},dl_dst={vm_obj_dict[vm_names[i]].smartnic_interface_data.mac_address},actions=output:{used_vf.vf_rep}\"")
+            run_and_check_output(self.cvm_obj,f"acli vm.off {vm_names[i]}:{vm_dict[vm_names[i]]}")
+            run_and_check_output(self.cvm_obj,f"acli vm.on {vm_names[i]}:{vm_dict[vm_names[i]]}")
         # pdb.set_trace()
         STEP("packet count tests")
         prot=["icmp","udp","tcp"]
+        ips,subnet = get_two_unused_ips_in_subnet()
+        INFO(ips)
+        INFO(subnet)
+        for i in range(2):
+            vm_obj_dict[vm_names[i]].ssh_obj.execute("ifconfig")
+            vm_obj_dict[vm_names[i]].set_ip_for_smartnic(ips[i],subnet)
+        # vm_obj_dict[vm_names[0]].ssh_obj.ping_an_ip(vm_obj_dict[vm_names[1]].snic_ip,interface=vm_obj_dict[vm_names[0]].smartnic_interface_data.name,count = 5)
+        # time.sleep(30)
         for ahv_obj in [ahv_obj_1,ahv_obj_2]:
             for i in prot:
                 ahv_obj.execute(f"rm -f /tmp/{i}tcpdump_output1.pcap")
                 ahv_obj.execute(f"rm -f /tmp/{i}tcpdump_output2.pcap")
         for i in range(2):
             start_tcpdump(ahv_objs[i],vm_obj_dict[vm_names[i]].vf_rep,vm_obj_dict[vm_names[i]].snic_ip,f"/tmp/icmptcpdump_output{i+1}.pcap")
-            vm_obj_dict[vm_names[i]].ssh_obj.execute("ifconfig")
-            vm_obj_dict[vm_names[i]].set_ip_for_smartnic(f"192.168.1.{i+1}0","192.168.1.0")
+        
         STEP("Starting Ping Test")
         vm_obj_dict[vm_names[0]].ssh_obj.ping_an_ip(vm_obj_dict[vm_names[1]].snic_ip,interface=vm_obj_dict[vm_names[0]].smartnic_interface_data.name)
         time.sleep(4)
@@ -242,6 +251,10 @@ class InterNodeTest(OemBaseTest):
         flows = [flows1,flows2]
         DEBUG(flows)
         tc_ping_filters_vf1_ingress = get_tc_filter_details(ahv_obj_1, vm_obj_dict[vm_names[0]].vf_rep)
+        arp_data_1 = vm_obj_dict[vm_names[0]].ssh_obj.execute("arp -na")["stdout"]
+        arp_data_2 = vm_obj_dict[vm_names[1]].ssh_obj.execute("arp -na")["stdout"]
+        route_data_1 = vm_obj_dict[vm_names[0]].ssh_obj.execute("route -n")["stdout"]
+        route_data_2 = vm_obj_dict[vm_names[1]].ssh_obj.execute("route -n")["stdout"]
         # tc_ping_filters_vf1_egress = get_tc_filter_details(ahv_obj, vm_obj_dict[vm_names[0]].vf_rep,type="egress")
         tc_ping_filters_vf2_ingress = get_tc_filter_details(ahv_obj_2, vm_obj_dict[vm_names[1]].vf_rep)
         tc_ping_filters_br0_egress_1 = get_tc_filter_details(ahv_obj_1, bridge,type="egress")
@@ -255,6 +268,10 @@ class InterNodeTest(OemBaseTest):
                 INFO(flows)
                 INFO(tc_ping_filters_vf1_ingress)
                 INFO(tc_ping_filters_vf2_ingress)
+                INFO(arp_data_1)
+                INFO(arp_data_2)
+                INFO(route_data_1)
+                INFO(route_data_2)
                 raise ExpError("Flows are not offloaded in Ping traffic")
 
             else:
@@ -262,10 +279,10 @@ class InterNodeTest(OemBaseTest):
             if not check_flows(flows[i],vm_obj_dict[vm_names[i]].vf_rep,port_1 if i==0 else port_2,packet_count=9):
                 ERROR("Failed to verify packet count using offloaded flows")
                 STEP("Verification of packet count using offloaded flows: Fail")
-                icmp_val = icmp_val and False
+                icmp_val = False
             else:
                 STEP("Verification of packet count using offloaded flows: Pass")
-                icmp_val = icmp_val and True
+                
         # pdb.set_trace()
         icmp_packet_count1 = count_packets(ahv_obj_1, "/tmp/icmptcpdump_output1.pcap", vm_obj_dict[vm_names[0]].snic_ip, vm_obj_dict[vm_names[1]].snic_ip)
         INFO(f"ICMP packet count on vf1: {icmp_packet_count1}")
@@ -295,6 +312,7 @@ class InterNodeTest(OemBaseTest):
         STEP("starting TCP test")
         for i in range(2):
             start_tcpdump(ahv_objs[i],vm_obj_dict[vm_names[i]].vf_rep,vm_obj_dict[vm_names[i]].snic_ip,f"/tmp/tcptcpdump_output{i+1}.pcap",pac_type="tcp")
+            vm_obj_dict[vm_names[i]].set_ip_for_smartnic(ips[i],subnet)
         result_tcp=parse_iperf_output(start_iperf_test(vm_obj_dict[vm_names[0]],vm_obj_dict[vm_names[1]],udp=False),udp=False)
         DEBUG(result_tcp)
         tc_filters_vf1_ingress_tcp = get_tc_filter_details(ahv_obj_1, vm_obj_dict[vm_names[0]].vf_rep)
@@ -315,7 +333,7 @@ class InterNodeTest(OemBaseTest):
                 INFO(flows)
                 INFO(tc_filters_vf1_ingress_tcp)
                 INFO(tc_filters_vf2_ingress_tcp)
-                raise ExpError("Flows are not offloaded in Ping traffic")
+                raise ExpError("Flows are not offloaded  ")
             else:
                 STEP("Verification of TCP offloaded flows: Pass")
         STEP("TCPDump for TCP packets")
@@ -339,6 +357,7 @@ class InterNodeTest(OemBaseTest):
         time.sleep(25)
         for i in range(2):
             start_tcpdump(ahv_objs[i],vm_obj_dict[vm_names[i]].vf_rep,vm_obj_dict[vm_names[i]].snic_ip, f"/tmp/udptcpdump_output{i+1}.txt",pac_type="udp")
+            vm_obj_dict[vm_names[i]].set_ip_for_smartnic(ips[i],subnet)
         STEP("hping3 test for UDP")
         vm_obj_dict[vm_names[0]].ssh_obj.run_hping3(vm_obj_dict[vm_names[1]].snic_ip,vm_obj_dict[vm_names[1]].smartnic_interface_data.name,True)
         stop_tcpdump(ahv_obj_1, vm_obj_dict[vm_names[0]].vf_rep)

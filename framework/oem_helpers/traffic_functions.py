@@ -2,6 +2,43 @@ from framework.logging.log import INFO,DEBUG,WARN,ERROR,STEP,ERROR
 from framework.logging.error import ExpError
 from framework.flow_helpers.net_gen import *
 import uuid
+import subprocess
+import random
+def generate_random_subnet():
+    """Generate a random base IP for a /24 subnet in private IP ranges."""
+    # Private IP ranges: 10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16
+    private_ranges = [
+        (10, 0, 255),       # 10.0.0.0/8
+        (172, 16, 31),      # 172.16.0.0/12
+        (192, 168, 168)     # 192.168.0.0/16
+    ]
+    range_choice = random.choice(private_ranges)
+    base_ip = f"{range_choice[0]}.{random.randint(range_choice[1], range_choice[2])}.{random.randint(0, 255)}.0"
+    return base_ip
+
+def generate_ip_in_subnet(base_ip):
+    """Generate a random IP address in the given /24 subnet."""
+    subnet_base = base_ip.rsplit('.', 1)[0]  # Extract the base subnet (e.g., 10.0.1)
+    return f"{subnet_base}.{random.randint(1, 254)}"
+
+def is_ip_reachable(ip):
+    """Ping the IP address to check if it is reachable."""
+    try:
+        # Ping the IP address with a timeout of 1 second
+        subprocess.run(["ping", "-c", "1", "-W", "1", ip], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=True)
+        return True
+    except subprocess.CalledProcessError:
+        return False
+
+def get_two_unused_ips_in_subnet():
+    """Generate and return two unique unused IP addresses in the same subnet."""
+    subnet = generate_random_subnet()
+    unused_ips = set()
+    while len(unused_ips) < 2:
+        ip = generate_ip_in_subnet(subnet)
+        if not is_ip_reachable(ip):
+            unused_ips.add(ip)
+    return list(unused_ips),subnet
 
 def generate_custom_uuid():
     pattern = re.compile(
@@ -119,8 +156,6 @@ def validate_packets(vf_rep_packet_count,flows,iperf_output):
         
         
 def start_iperf_test(vm_obj_1,vm_obj_2,udp):
-    vm_obj_1.set_ip_for_smartnic("192.168.1.10","192.168.1.0")
-    vm_obj_2.set_ip_for_smartnic("192.168.1.20","192.168.1.0")
     vm_obj_1.ssh_obj.execute("systemctl stop firewalld",run_as_root=True)
     vm_obj_2.ssh_obj.execute("systemctl stop firewalld",run_as_root=True)
     try:

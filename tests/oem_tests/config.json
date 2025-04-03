@@ -1,3 +1,20 @@
 {
-    
+    "intra":{
+        "topology" : [
+            {
+                "type" : "vm",
+                "config" : {
+                    "host_idx" : 0,
+                    "count" : 1
+                }
+            },
+            {
+                "type" : "vm",
+                "config" : {
+                    "host_idx" : 1,
+                    "count" : 1
+                }
+            }
+        ]
+    }
 }

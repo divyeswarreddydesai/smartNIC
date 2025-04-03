@@ -294,8 +294,11 @@ class IntraNodeTest(OemBaseTest):
         vm_obj_dict[vm_names[0]].ssh_obj.execute("ifconfig")
         vm_obj_dict[vm_names[1]].ssh_obj.execute("ifconfig")
         # import pdb;pdb.set_trace()
-        vm_obj_dict[vm_names[0]].set_ip_for_smartnic("192.168.1.10","192.168.1.0")
-        vm_obj_dict[vm_names[1]].set_ip_for_smartnic("192.168.1.20","192.168.1.0")
+        ips,subnet = get_two_unused_ips_in_subnet()
+        for i in range(2):
+            vm_obj_dict[vm_names[i]].set_ip_for_smartnic(ips[i],subnet)
+        # vm_obj_dict[vm_names[0]].set_ip_for_smartnic("192.168.1.10","192.168.1.0")
+        # vm_obj_dict[vm_names[1]].set_ip_for_smartnic("192.168.1.20","192.168.1.0")
         STEP("Starting Ping Test")
         vm_obj_dict[vm_names[0]].ssh_obj.ping_an_ip(vm_obj_dict[vm_names[1]].snic_ip,interface=vm_obj_dict[vm_names[0]].smartnic_interface_data.name)
         # vm_obj_dict[vm_names[0]].ssh_obj.execute("ifconfig")
@@ -360,6 +363,8 @@ class IntraNodeTest(OemBaseTest):
         STEP("starting TCP test")
         start_tcpdump(ahv_obj, vf_list[0].vf_rep,vm_obj_dict[vm_names[0]].snic_ip, "/tmp/tcptcpdump_output1.pcap",pac_type="tcp")
         start_tcpdump(ahv_obj, vf_list[1].vf_rep,vm_obj_dict[vm_names[1]].snic_ip, "/tmp/tcptcpdump_output2.pcap",pac_type="tcp")
+        for i in range(2):
+            vm_obj_dict[vm_names[i]].set_ip_for_smartnic(ips[i],subnet)
         result_tcp=parse_iperf_output(start_iperf_test(vm_obj_dict[vm_names[0]],vm_obj_dict[vm_names[1]],udp=False),udp=False)
         INFO(result_tcp)
         tc_filters_vf1_ingress_tcp = get_tc_filter_details(ahv_obj, vm_obj_dict[vm_names[0]].vf_rep)
@@ -406,6 +411,8 @@ class IntraNodeTest(OemBaseTest):
         stop_tcpdump(ahv_obj, vm_obj_dict[vm_names[1]].vf_rep)
         time.sleep(15)
         STEP("starting iperf test for UDP")
+        for i in range(2):
+            vm_obj_dict[vm_names[i]].set_ip_for_smartnic(ips[i],subnet)
         result_udp=parse_iperf_output(start_iperf_test(vm_obj_dict[vm_names[0]],vm_obj_dict[vm_names[1]],udp=True),udp=True)
         INFO(result_udp)
         tc_filters_vf1_ingress_udp = get_tc_filter_details(ahv_obj, vm_obj_dict[vm_names[0]].vf_rep)
