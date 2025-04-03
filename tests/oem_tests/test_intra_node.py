@@ -471,6 +471,7 @@ class IntraNodeTest(OemBaseTest):
         INFO(f"Total offloaded packets : {result_tcp['packets_sent'] - max(tcp_packet_count1,tcp_packet_count2)}")
         INFO(f"TCP packet count verification: {'PASS' if tcp_packet_count_result else 'FAIL'}")
         INFO(f"Packet count in the offloaded Flows : {'PASS' if tcp_val else 'FAIL'}")
+        INFO(f"BANDWIDTH : {result_tcp['average_throughput_gbps']} Gbps")
         STEP("UDP:")
         INFO(f"Number of UDP packets sent: {result_udp['packets_sent']}")
         INFO(f"Number of packets at vf_rep1: {udp_packet_count1}")
@@ -479,6 +480,7 @@ class IntraNodeTest(OemBaseTest):
         INFO(f"Total offloaded packets : {result_udp['packets_sent'] - max(udp_packet_count1,udp_packet_count2)}")
         INFO(f"UDP packet count verification: {'PASS' if udp_packet_count_result else 'FAIL'}")
         INFO(f"Packet count in the offloaded Flows : {'PASS' if udp_val else 'FAIL'}")
+        INFO(f"BANDWIDTH : {result_udp['average_throughput_gbps']} Gbps")
         
         if self.tc_filter:
             STEP("tc filters of ping traffic:")
