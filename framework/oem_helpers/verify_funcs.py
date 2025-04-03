@@ -137,7 +137,7 @@ def port_selection(setup,host_ip,port,excluse_hosts=[],exclude_ports=[]):
         else:
             ports = [port]
         new_ports = ports[:]
-        for j in new_ports:
+        for j in ports:
             if setup.AHV_nic_port_map[i][j].get("supported_capabilities") :
                 INFO(setup.AHV_nic_port_map[i][j])
                 if len(setup.AHV_nic_port_map[i][j]["supported_capabilities"])>0 and setup.AHV_nic_port_map[i][j]['nic_type']!="Unknown":
@@ -158,21 +158,16 @@ def port_selection(setup,host_ip,port,excluse_hosts=[],exclude_ports=[]):
             new_hosts.remove(i)
     if len(new_hosts)==0:
         if val1 and val2:
-            raise ExpError("No NIC found with DPOFFLOAD support")
+            raise ExpError("No NIC found with Valid DPOFFLOAD support")
         elif val1:
-            raise ExpError(f"No NIC found with DPOFFLOAD support with port {port} on the hosts")
+            raise ExpError(f"No NIC found with Valid DPOFFLOAD support with port {port} on the hosts")
         elif val2:
-            raise ExpError(f"No NIC found with DPOFFLOAD support on host {host_ip}")
+            raise ExpError(f"No NIC found with Valid DPOFFLOAD support on host {host_ip}")
         else:
-            raise ExpError(f"NIC with port {port} on host {host_ip} doesn't support DPOFFLOAD")
+            raise ExpError(f"NIC with port {port} on host {host_ip} doesn't support DPOFFLOAD or doesnt have valid firmware and driver version")
     for i in new_hosts:
-        if val2:
-            ports = list(setup.AHV_nic_port_map[i].keys())
-            ports = random.sample(ports,len(ports))
-            DEBUG(ports)
-        else:
-            ports = new_ports
-        for j in ports:
+        # ports = new_ports[:]
+        for j in new_ports:
             res=setup.AHV_obj_dict[i].execute("ovs-appctl bond/show")['stdout']
             if (j not in res) or ((j+": disabled") in res):
                 DEBUG(f"removing port:{j}")
