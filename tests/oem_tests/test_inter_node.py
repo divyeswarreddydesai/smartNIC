@@ -356,8 +356,10 @@ class InterNodeTest(OemBaseTest):
         # pdb.set_trace()
         time.sleep(25)
         for i in range(2):
-            start_tcpdump(ahv_objs[i],vm_obj_dict[vm_names[i]].vf_rep,vm_obj_dict[vm_names[i]].snic_ip, f"/tmp/udptcpdump_output{i+1}.txt",pac_type="udp")
             vm_obj_dict[vm_names[i]].set_ip_for_smartnic(ips[i],subnet)
+            start_tcpdump(ahv_objs[i],vm_obj_dict[vm_names[i]].vf_rep,vm_obj_dict[vm_names[i]].snic_ip, f"/tmp/udptcpdump_output{i+1}.txt",pac_type="udp",ip1=vm_obj_dict[vm_names[0]].snic_ip,
+                    ip2=vm_obj_dict[vm_names[1]].snic_ip)
+            
         STEP("hping3 test for UDP")
         vm_obj_dict[vm_names[0]].ssh_obj.run_hping3(vm_obj_dict[vm_names[1]].snic_ip,vm_obj_dict[vm_names[1]].smartnic_interface_data.name,True)
         stop_tcpdump(ahv_obj_1, vm_obj_dict[vm_names[0]].vf_rep)

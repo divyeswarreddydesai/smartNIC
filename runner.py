@@ -49,6 +49,7 @@ def run_test(test_func,fw_check=True,args=None):
         ERROR(f"Class not found in module {module_name}")
         test_results[test_func] = 'fail'
         return
+    
     test_args=config.get(test_func,{})
     kwargs = {
         "oem_config" : oem_config,
@@ -118,7 +119,7 @@ if __name__ == "__main__":
     parser.add_argument("--debug", action="store_true", help="Enable debug mode"
                         ,default=False)
     parser.add_argument("--vfdriver", action="store_true", 
-                        help="Install Guest VF driver",default=False)
+                        help="Install Guest VF driver",default=False)   
     parser.add_argument("--skip_fw_check", action="store_false", 
                         help="Skip firmware and driver version check",
                         default=False)
@@ -131,17 +132,30 @@ if __name__ == "__main__":
     # group.add_argument("--test_func", type=str, 
     #                     help="Name of the test directory to run from the \
     #                     JSON file")
+    parser.add_argument("--scaleout", action="store_true",
+                        help="Run scaleout tests",default=False)
     group.add_argument("--intra", action="store_true",
                        help="Run intra-node tests")
     group.add_argument("--inter", action="store_true",
                           help="Run inter-node tests")
     group.add_argument("--run_all", action="store_true", help="Run all tests")
-    intra = "test_intra_node.IntraNodeTest.test_intra_node"
-    inter = "test_inter_node.InterNodeTest.test_inter_node"
+    intra = "test_intra.IntraNodeTest.test_intra_node"
+    inter = "test_inter.InterNodeTest.test_inter_node"
+    test = None
     args = parser.parse_args()
+    if args.intra:
+        test = intra
+    elif args.inter:
+        test = inter
+    else:
+        raise ValueError("Please provide a test to run")
+    if args.scaleout:
+        test = test + "_scaleout"
     if args.debug:
         setup_logger(True)
-    if args.intra:
-        run_test(intra,(not args.skip_fw_check),args)
-    elif args.inter:
-        run_test(inter,(not args.skip_fw_check),args)
+    run_test(test,(not args.skip_fw_check),args)
+    
+    # if args.intra:
+    #     run_test(intra,(not args.skip_fw_check),args)
+    # elif args.inter:
+    #     run_test(inter,(not args.skip_fw_check),args)

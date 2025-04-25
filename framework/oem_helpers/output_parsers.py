@@ -176,7 +176,7 @@ def parse_ahv_port_flows(host):
     command = "ovs-appctl dpctl/dump-flows --names -m type=offloaded"
     try:
         # Connect to the remote server
-        result=host.execute(command)
+        result=host.execute_with_lock(command)
         output = result["stdout"]
 
     except Exception as e:
@@ -202,3 +202,25 @@ def run_and_check_output(setup,cmd):
             raise ExpError(f"Failed to run command {cmd} due to {res['stdout']}")
     # if res['exit_code']!=0:
     #     raise ExpError(f"Failed to run command {cmd}")
+
+def get_result(vm1_name, vm2_name, result_queue):
+    """
+    Retrieve the result_tcp for the given VM pair from the tcp_result_queue.
+
+    Args:
+        vm1_name (str): Name of the first VM.
+        vm2_name (str): Name of the second VM.
+        tcp_result_queue (queue.Queue): Queue containing TCP test results.
+
+    Returns:
+        dict: The result_tcp for the given VM pair.
+
+    Raises:
+        ExpError: If no result is found for the given VM pair.
+    """
+    for vm_pair, tcp_result in list(result_queue.queue):
+        if vm_pair == (vm1_name, vm2_name):
+            return tcp_result
+
+    # If no matching result is found, raise an error
+    raise ExpError(f"No TCP result found for VM pair: {vm1_name}, {vm2_name}")

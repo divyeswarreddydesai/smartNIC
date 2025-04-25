@@ -25,9 +25,11 @@ class NetworkInterface:
         return f"NetworkInterface(name={self.name}, mac_address={self.mac_address}, ipv4_address={self.ipv4_address}, ipv6_addresses={self.ipv6_addresses})"
 
 class VM:
-    def __init__(self,name, ssh_obj=None, nic_data=None, interface_data=None, vm_id=None):
+    def __init__(self,name, ssh_obj=None, nic_data=None, interface_data=None, vm_id=None, host=None, port=None):
         self.name = name
         self.ssh_obj = ssh_obj
+        self.host = host
+        self.port = port
         self.nic_data = nic_data if nic_data else []
         self.interface_data = interface_data if interface_data else []
         self.smartnic_interface_data = None
@@ -134,6 +136,7 @@ class VM:
         res = self.ssh_obj.execute("ip -j address")
         self.parse_ip_output(res["stdout"])
     def set_ip_for_smartnic(self,ip,route):
+        DEBUG(f"Setting IP address {ip} for SmartNIC interface {self.smartnic_interface_data.name}")
         self.snic_ip=ip
         self.ssh_obj.execute(f"ifconfig {self.smartnic_interface_data.name} {ip}/24 up")
         try:

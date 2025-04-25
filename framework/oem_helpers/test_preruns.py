@@ -4,6 +4,7 @@ from framework.logging.error import ExpError
 from framework.vm_helpers.linux_os import LinuxOperatingSystem
 from framework.vm_helpers.consts import *
 from framework.logging.log import INFO,DEBUG,WARN,ERROR,STEP,ERROR
+
 def extract_names(log_content):
     # Regular expression to match the Name field
     name_pattern = re.compile(r"^\s*Name\s*:\s*(.*)$", re.MULTILINE)
@@ -11,6 +12,24 @@ def extract_names(log_content):
     # Find all matches in the log content
     names = name_pattern.findall(log_content)
     return names
+def set_port(ahv_port_pairs, active=False):
+    for idx,(ahv,port) in enumerate(ahv_port_pairs):
+        if active:
+            try:
+                ahv.execute(f"ovs-appctl bond/set-active-member br0-up {port}")
+            except Exception as e:
+                raise ExpError(f"Failed to set active member: {e}")
+        try:
+            ahv.execute(
+                "ovs-vsctl set Open_vSwitch . other_config:max-idle=80000")
+            ahv.execute(
+                "ovs-vsctl set Open_vSwitch . other_config:hw-offload=true")
+            ahv.execute(
+                "systemctl restart openvswitch")
+            ahv.execute(f"echo switchdev > "
+                        f"/sys/class/net/{port}/compat/devlink/mode")
+        except Exception as e:
+            ERROR(f"Failed to create bridge on AHV: {e}")
 def image_creation(setup,vm_args):
     # INFO(setup.execute("ncli ctr list")["stdout"])
     container_names=extract_names(setup.execute("ncli ctr list")["stdout"])

@@ -403,8 +403,10 @@ class IntraNodeTest(OemBaseTest):
             STEP("Verification of packet count: Fail")
         time.sleep(25)
         
-        start_tcpdump(ahv_obj, vf_list[0].vf_rep,vm_obj_dict[vm_names[0]].snic_ip, "/tmp/udptcpdump_output1.txt",pac_type="udp")
-        start_tcpdump(ahv_obj, vf_list[1].vf_rep,vm_obj_dict[vm_names[1]].snic_ip, "/tmp/udptcpdump_output2.txt",pac_type="udp")
+        start_tcpdump(ahv_obj, vf_list[0].vf_rep,vm_obj_dict[vm_names[0]].snic_ip, "/tmp/udptcpdump_output1.txt",pac_type="udp",ip1=vm_obj_dict[vm_names[0]].snic_ip,
+                    ip2=vm_obj_dict[vm_names[1]].snic_ip)
+        start_tcpdump(ahv_obj, vf_list[1].vf_rep,vm_obj_dict[vm_names[1]].snic_ip, "/tmp/udptcpdump_output2.txt",pac_type="udp",ip1=vm_obj_dict[vm_names[0]].snic_ip,
+                    ip2=vm_obj_dict[vm_names[1]].snic_ip)
         STEP("hping3 test for UDP")
         vm_obj_dict[vm_names[0]].ssh_obj.run_hping3(vm_obj_dict[vm_names[1]].snic_ip,vm_obj_dict[vm_names[1]].smartnic_interface_data.name,True)
         stop_tcpdump(ahv_obj, vm_obj_dict[vm_names[0]].vf_rep)

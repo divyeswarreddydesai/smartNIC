@@ -11,6 +11,7 @@ from paramiko.ssh_exception import AuthenticationException
 from framework.logging.error import ExpError
 from paramiko import ProxyCommand
 from framework.logging.log import INFO,DEBUG,ERROR
+import threading
 MAX_CHANNEL_CREATION_RETRIES = 100
 logging.getLogger("paramiko.transport").setLevel(logging.WARNING)
 class SSHClient:
@@ -144,6 +145,7 @@ class SSHClient:
     def execute(self, cmd, retries=3, timeout=60, tty=True, run_as_root=False, background=False, log_response=True, 
                 conn_acquire_timeout=1, close_ssh_connection=False, disable_safe_rm=True, log_command=True, 
                 async_=False, session_timeout=1000):
+        
         if self.client is None:
             raise Exception("SSH client not connected")
         if not self.is_connected():
@@ -161,6 +163,7 @@ class SSHClient:
                     INFO(f"Executing command: {cmd}")
                 cmd1 = f"source /etc/profile; {cmd}"
                 DEBUG(cmd1)
+                
                 stdin, stdout, stderr = self.client.exec_command(cmd1, timeout=timeout, get_pty=tty)
                 DEBUG(f"Command executed: {cmd}")
                 if async_ or (not tty):
@@ -204,7 +207,7 @@ class SSHClient:
                 ERROR(f"Exception: {traceback.format_exc()}")
                 if attempt + 1 == retries:
                     raise ExpError(f"Failed to execute command after {retries} attempts: {e}")
-                # time.sleep(conn_acquire_timeout )  # Wait before retrying
+            # time.sleep(conn_acquire_timeout )  # Wait before retrying
     def close(self):
         if self.client:
             close_thread = threading.Thread(target=self._close_client)

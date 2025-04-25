@@ -5,6 +5,7 @@ from framework.vm_helpers.consts import *
 from framework.oem_helpers.test_preruns import nic_data
 # from framework.sdk_helpers.entity_manager import EntityManager
 import pexpect
+import threading
 import time
 from framework.logging.error import ExpError
 from framework.sdk_helpers.prism_api_client import PrismApiClient
@@ -178,9 +179,17 @@ class CVM(LinuxOperatingSystem):
 class AHV(LinuxOperatingSystem):
     def __init__(self, ip, username=AHV_USER, password=AHV_PASSWORD, *args, **kwargs):
         super(AHV, self).__init__(ip, username, password, *args, **kwargs)
+        self._lock = threading.Lock()
         self.ip=ip
     def get_ssh_client(self):
         return self._ssh
+    def execute_with_lock(self, command, *args, **kwargs):
+        """
+        Execute a command on the AHV object with thread-safe access.
+        """
+        with self._lock:  # Acquire the lock
+            DEBUG(f"Executing command on AHV {self.ip}: {command}")
+            return self.execute(command, *args, **kwargs)
 
     def close_connection(self):
         self._ssh.close()

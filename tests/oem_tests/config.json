@@ -1,5 +1,27 @@
 {
-    "intra":{
+    "test_intra_node":{
+        "topology" : [
+            {
+                "type" : "vm",
+                "config" : {
+                    "host_idx" : 0,
+                    "count" : 2
+                }
+            }
+        ]
+    },
+    "test_intra_node_scaleout":{
+        "topology" : [
+            {
+                "type" : "vm",
+                "config" : {
+                    "host_idx" : 0,
+                    "count" : 8
+                }
+            }
+        ]
+    },
+    "test_inter_node":{
         "topology" : [
             {
                 "type" : "vm",
@@ -13,6 +35,24 @@
                 "config" : {
                     "host_idx" : 1,
                     "count" : 1
+                }
+            }
+        ]
+    },
+    "test_inter_node_scaleout":{
+        "topology" : [
+            {
+                "type" : "vm",
+                "config" : {
+                    "host_idx" : 0,
+                    "count" : 8
+                }
+            },
+            {
+                "type" : "vm",
+                "config" : {
+                    "host_idx" : 1,
+                    "count" : 8
                 }
             }
         ]
