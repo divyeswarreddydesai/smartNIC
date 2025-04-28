@@ -484,8 +484,12 @@ class OemBaseTest:
                 ERROR("Failed to verify tc filters")
                 rep["icmp"]["tc_filter_validation"] = False
                 STEP("Verification of tc filters of ping traffic: Fail")
+            rep["icmp"]["vf1_ingress"] = tc_ping_filters_vf1_ingress
+            rep["icmp"]["vf2_ingress"] = tc_ping_filters_vf2_ingress
+            rep["icmp"]["br0_egress_1"] = flow_data["icmp"]["vm_data"][idx]["tc_filters"]["br0_egress_1"]
+            rep["icmp"]["br0_egress_2"] = flow_data["icmp"]["vm_data"][idx]["tc_filters"]["br0_egress_2"]
             reports[idx] = rep
-        INFO(reports)
+        # INFO(reports)
         time.sleep(90)
         STEP("iperf test")
         STEP("starting TCP test")
@@ -611,6 +615,11 @@ class OemBaseTest:
                 ERROR("TCP packet count mismatch")
                 STEP("Verification of packet count: Fail")
             rep["tcp"]["packet_count_validation"] = tcp_packet_count_result
+            rep["tcp"]["vf1_ingress"] = flow_data["tcp"]["vm_data"][idx]["tc_filters"]["vf1_ingress"]
+            rep["tcp"]["vf2_ingress"] = flow_data["tcp"]["vm_data"][idx]["tc_filters"]["vf2_ingress"]
+            rep["tcp"]["br0_egress_1"] = flow_data["tcp"]["vm_data"][idx]["tc_filters"]["br0_egress_1"]
+            rep["tcp"]["br0_egress_2"] = flow_data["tcp"]["vm_data"][idx]["tc_filters"]["br0_egress_2"]
+            reports[idx] = rep
         time.sleep(90)
         STEP("UDP test")
         for idx,pair in enumerate(vm_pairs):
@@ -681,7 +690,6 @@ class OemBaseTest:
         for idx,pair in enumerate(vm_pairs):
             rep = reports[idx]
             rep["udp"] = {}
-            
             flows = flow_data["udp"]["flows"]
             udp_val = True
             if inter:
@@ -748,6 +756,11 @@ class OemBaseTest:
                 ERROR("UDP packet count mismatch")
                 STEP("Verification of packet count: Fail")
             rep["udp"]["packet_count_validation"] = udp_packet_count_result
+            rep["udp"]["vf1_ingress"] = flow_data["udp"]["vm_data"][idx]["tc_filters"]["vf1_ingress"]
+            rep["udp"]["vf2_ingress"] = flow_data["udp"]["vm_data"][idx]["tc_filters"]["vf2_ingress"]
+            rep["udp"]["br0_egress_1"] = flow_data["udp"]["vm_data"][idx]["tc_filters"]["br0_egress_1"]
+            rep["udp"]["br0_egress_2"] = flow_data["udp"]["vm_data"][idx]["tc_filters"]["br0_egress_2"]
+            reports[idx] = rep
         self.reports = reports
         
         
@@ -775,7 +788,38 @@ class OemBaseTest:
         if not self.reports:
             INFO("No reports available.")
             return
-
+        if self.tc_filter:
+            STEP("TC filters")
+            for idx, report in enumerate(self.reports, start=1):
+                STEP(f"Report {idx}")
+                INFO(f"  Source IP: {report['src_ip']}")
+                INFO(f"  Destination IP: {report['dst_ip']}")
+                INFO(f"  Source MAC: {report['src_mac']}")
+                INFO(f"  Destination MAC: {report['dst_mac']}")
+                
+                STEP("ICMP")
+                INFO(f"    VF Rep 1: {report['icmp']['vf1_ingress']}")
+                INFO(f"    VF Rep 2: {report['icmp']['vf2_ingress']}")
+                INFO(f"    Bridge Egress 1: {report['icmp']['br0_egress_1']}")
+                if report["inter_node"]:
+                    INFO(f"    Bridge Egress 2: {report['icmp']['br0_egress_2']}")
+                # INFO(f"    Bridge Egress 2: {report['icmp']['br0_egress_2']}")
+                
+                STEP("TCP")
+                INFO(f"    VF Rep 1: {report['tcp']['vf1_ingress']}")
+                INFO(f"    VF Rep 2: {report['tcp']['vf2_ingress']}")
+                INFO(f"    Bridge Egress 1: {report['tcp']['br0_egress_1']}")
+                # INFO(f"    Bridge Egress 2: {report['tcp']['br0_egress_2']}")
+                if report["inter_node"]:
+                    INFO(f"    Bridge Egress 2: {report['tcp']['br0_egress_2']}")
+                
+                STEP("UDP")
+                INFO(f"    VF Rep 1: {report['udp']['vf1_ingress']}")
+                INFO(f"    VF Rep 2: {report['udp']['vf2_ingress']}")
+                INFO(f"    Bridge Egress 1: {report['udp']['br0_egress_1']}")
+                # INFO(f"    Bridge Egress 2: {report['udp']['br0_egress_2']}")
+                if report["inter_node"]:
+                    INFO(f"    Bridge Egress 2: {report['udp']['br0_egress_2']}")
         STEP("Printing All Reports")
         for idx, report in enumerate(self.reports, start=1):
             STEP(f"Report {idx}")
@@ -819,6 +863,7 @@ class OemBaseTest:
             INFO(f"    Verification of packet count in flows: {report['udp']['flows_validation']}")
             INFO(f"    Verification of packet count at VF Reps: {report['udp']['packet_count_validation']}")
             INFO("-" * 50)    
+        
     # def run_traffic_test(self, vm1_name, vm2_name,barrier):
     #     """
     #     Run traffic tests between two VMs and log the output to a thread-specific file.
