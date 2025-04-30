@@ -1,8 +1,11 @@
 #!/bin/bash
 
 # Disable 'exit on error' for better error handling
-set +e  # Disable exit on error to keep SSH connection open
+set +e  # Don't exit script on error to keep SSH connection open
 set -o pipefail  # Catch errors in piped commands
+
+# Save current working directory
+ORIGINAL_DIR="$(pwd)"
 
 # Detect package manager
 detect_package_manager() {
@@ -20,7 +23,7 @@ detect_package_manager() {
 # Detect OS version
 detect_os_version() {
     if [ -f /etc/centos-release ]; then
-        grep -q "7\." /etc/centos-release && echo "centos7" && return
+        grep -q "7\\." /etc/centos-release && echo "centos7" && return
     fi
     echo "other"
 }
@@ -30,7 +33,7 @@ OS_VERSION=$(detect_os_version)
 
 if [ "$PKG_MANAGER" = "none" ]; then
     echo "❌ No supported package manager found (dnf, apt, yum). Exiting."
-    exit 1
+    # exit 1
 fi
 
 echo "ℹ️  Using package manager: $PKG_MANAGER"
@@ -52,63 +55,53 @@ if [ "$PKG_MANAGER" = "apt" ]; then
 else
     sudo "$PKG_MANAGER" install -y gcc openssl-devel bzip2-devel libffi-devel \
         readline-devel sqlite-devel wget curl ncurses-devel gdbm-devel nss-devel \
-        lzma-sdk-devel tk-devel
+        xz-devel tk-devel
 fi
 
-# Install Python 3.9 if missing
-if ! command -v python3.9 &> /dev/null; then
-    echo "🐍 python3.9 not found. Building from source..."
+# Install Python 3.9 locally in /opt/python3.9
+PYTHON_DIR="/opt/python3.9"
+PYTHON_BIN="$PYTHON_DIR/bin/python3.9"
 
-    cd /usr/src
-    sudo wget https://www.python.org/ftp/python/3.9.7/Python-3.9.7.tgz
-    sudo tar xzf Python-3.9.7.tgz
+if [ ! -x "$PYTHON_BIN" ]; then
+    echo "🐍 python3.9 not found. Building from source in $PYTHON_DIR..."
+
+    mkdir -p /tmp/python-build
+    cd /tmp/python-build
+    wget https://www.python.org/ftp/python/3.9.7/Python-3.9.7.tgz
+    tar xzf Python-3.9.7.tgz
     cd Python-3.9.7
 
-    sudo ./configure --enable-optimizations
+    ./configure --prefix=$PYTHON_DIR --enable-optimizations
+    make -j$(nproc)
     sudo make altinstall
 
-    echo "✅ Python 3.9 installed successfully."
-
-    # ➡️ Fix shared libraries for Python 3.9
-    echo "/usr/local/lib" | sudo tee /etc/ld.so.conf.d/python3.9.conf
-    sudo ldconfig
+    echo "✅ Python 3.9 installed successfully in $PYTHON_DIR."
 else
-    echo "✅ python3.9 already installed."
+    echo "✅ Python 3.9 already installed in $PYTHON_DIR."
 fi
 
-# Fix PATH if /usr/local/bin is missing
-if [[ ":$PATH:" != *":/usr/local/bin:"* ]]; then
-    export PATH="/usr/local/bin:$PATH"
-fi
-
-# Check if venv module works
-if ! python3.9 -m venv --help &> /dev/null; then
-    echo "❌ Python 3.9 venv module not available."
-    exit 1
-fi
-
-# Ensure we are in the correct directory to create the .venv
-cd "$(pwd)" || {
-    echo "❌ Failed to navigate to the current directory. Exiting."
-    exit 1
+# Return to original directory
+cd "$ORIGINAL_DIR" || {
+    echo "❌ Failed to navigate back to original directory. Exiting."
+    # exit 1
 }
 
-# Delete .venv if it exists, then create a fresh virtual environment
+# Delete and recreate virtual environment
 if [ -d ".venv" ]; then
     echo "🔧 .venv directory exists. Deleting it..."
     rm -rf .venv
     echo "✅ Deleted existing .venv directory."
 fi
 
-# Create virtual environment with python3.9 in the current directory
-python3.9 -m venv .venv
-echo "✅ Virtual environment '.venv' created with Python 3.9."
+$PYTHON_BIN -m venv .venv
 
-# Activate virtual environment
-source .venv/bin/activate || {
-    echo "❌ Failed to activate virtual environment. Exiting."
-    exit 1
-}
+if [ ! -f ".venv/bin/activate" ]; then
+    echo "❌ Virtual environment activation script not found. Exiting."
+    # exit 1
+fi
+
+source .venv/bin/activate
+
 echo "✅ Virtual environment activated."
 
 echo "🔍 Checking Python version..."
@@ -118,7 +111,7 @@ if [[ "$PYTHON_VERSION" == *"Python 3.9"* ]]; then
 else
     echo "❌ Python version is not 3.9. Found: $PYTHON_VERSION"
     deactivate
-    exit 1
+    # exit 1
 fi
 
 # Upgrade pip inside venv
@@ -130,7 +123,7 @@ if [ -f requirements.txt ]; then
     pip install -r requirements.txt || {
         echo "❌ Error: Failed to install some packages."
         deactivate
-        exit 1
+        # exit 1
     }
 else
     echo "⚠️  No requirements.txt found. Skipping package installation."
