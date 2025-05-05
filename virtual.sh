@@ -65,12 +65,12 @@ PYTHON_BIN="$PYTHON_DIR/bin/python3.9"
 if [ ! -x "$PYTHON_BIN" ]; then
     echo "🐍 python3.9 not found. Building from source in $PYTHON_DIR..."
 
-    mkdir -p /tmp/python-build
-    cd /tmp/python-build
+    mkdir -p "$HOME/python-build"
+    cd "$HOME/python-build"
     wget https://www.python.org/ftp/python/3.9.7/Python-3.9.7.tgz
     tar xzf Python-3.9.7.tgz
     cd Python-3.9.7
-
+    chmod +x configure
     ./configure --prefix=$PYTHON_DIR --enable-optimizations
     make -j$(nproc)
     sudo make altinstall
