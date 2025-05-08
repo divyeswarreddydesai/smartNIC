@@ -82,17 +82,18 @@ class InterNodeTest(OemBaseTest):
         vlan_config = host_data["vlan_config"]
         vm_dict = self.vm_dict
         vm_obj_dict = self.vm_obj_dict
+        STEP("Deleting VMs and Flows")
         for host_name in self.vm_names.keys():
             ahv_obj = self.cvm_obj.AHV_obj_dict[host_name]
             for vm_name in self.vm_names[host_name]:
                 ahv_obj.execute(f"ovs-ofctl del-flows {bridge} in_port={vm_obj_dict[vm_name].vf_rep}")
                 ahv_obj.execute(f"ovs-ofctl del-flows {bridge} in_port={vm_obj_dict[vm_name].port}")
 
-        STEP("Deleting VMs and Network")
-        for name,id in vm_dict.items():
-            if name in vm_names:
-                run_and_check_output(setup,f"acli vm.off {name}:{id}")
-                run_and_check_output(setup,f"yes yes | acli vm.delete {name}:{id}")
+        
+            for name,id in vm_dict.items():
+                if name in vm_names[host_name]:
+                    run_and_check_output(setup,f"acli vm.off {name}:{id}")
+                    run_and_check_output(setup,f"yes yes | acli vm.delete {name}:{id}")
         if vlan_config.get("existing_vlan_name")=="":
             
             res=setup.execute("acli net.delete bas_sub")

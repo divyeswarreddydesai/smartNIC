@@ -75,8 +75,10 @@ class IntraNodeTest(OemBaseTest):
             ahv_obj_1.execute(f"ovs-ofctl del-flows {bridge} in_port={vm_obj_dict[vm].vf_rep}")
         
         STEP("Deleting VMs and Network")
+        INFO(vm_dict)
+        INFO(vm_names)
         for name,id in vm_dict.items():
-            if name in vm_names:
+            if name in vm_names[ahv_obj_1.ip]:
                 run_and_check_output(setup,f"acli vm.off {name}:{id}")
                 run_and_check_output(setup,f"yes yes | acli vm.delete {name}:{id}")
         if vlan_config.get("existing_vlan_name")=="":

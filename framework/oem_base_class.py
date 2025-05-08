@@ -316,13 +316,35 @@ class OemBaseTest:
             for obj in self.vm_obj_dict.values():
                 ahv_obj = self.cvm_obj.AHV_obj_dict[obj.host]
                 ahv_obj.execute_with_lock(f"rm -f /tmp/{prot_name}_{obj.vf_rep}."+("pcap" if prot_name!="udp" else "txt"))
-        for obj in self.vm_obj_dict.values():
-            ahv_obj = self.cvm_obj.AHV_obj_dict[obj.host]
-            start_tcpdump(ahv_obj, \
-                obj.vf_rep, obj.snic_ip, 
-                f"/tmp/icmp_{obj.vf_rep}.pcap")
         for pair in vm_pairs:
             self.flows_addition(pair[0],pair[1])
+        threads = []
+        for idx,pair in enumerate(vm_pairs):
+            for num in range(2):
+                pair[num].set_ip_for_smartnic(ips_list[idx][num],
+                                              subnet_list[idx])
+        for pair in vm_pairs:
+            thread = threading.Thread(target=send_ping, args=(pair[0], pair[1]))
+            threads.append(thread)
+            thread.start()
+        for thread in threads:
+            thread.join()
+        time.sleep(90)
+        STEP("Ping traffic completed for all VM pairs.")
+        for idx,pair in enumerate(vm_pairs):
+            for num in range(2):
+                pair[num].set_ip_for_smartnic(ips_list[idx][num],
+                                              subnet_list[idx])
+                start_tcpdump(self.cvm_obj.AHV_obj_dict[pair[num].host],
+                              pair[num].vf_rep, pair[num].snic_ip,
+                              f"/tmp/icmp_{pair[num].vf_rep}.pcap")
+        # for obj in self.vm_obj_dict.values():
+        #     ahv_obj = self.cvm_obj.AHV_obj_dict[obj.host]
+        #     start_tcpdump(ahv_obj, \
+        #         obj.vf_rep, obj.snic_ip, 
+        #         f"/tmp/icmp_{obj.vf_rep}.pcap")
+        # for pair in vm_pairs:
+        #     self.flows_addition(pair[0],pair[1])
         STEP("Starting Ping Test")
         threads = []
         for pair in vm_pairs:
@@ -496,7 +518,7 @@ class OemBaseTest:
         for idx,pair in enumerate(vm_pairs):
             for num in range(2):
                 pair[num].set_ip_for_smartnic(ips_list[idx][num],
-                                              subnet_list[idx][num])
+                                              subnet_list[idx])
                 start_tcpdump(self.cvm_obj.AHV_obj_dict[pair[num].host],
                               pair[num].vf_rep, pair[num].snic_ip,
                               f"/tmp/tcp_{pair[num].vf_rep}.pcap")
@@ -625,7 +647,7 @@ class OemBaseTest:
         for idx,pair in enumerate(vm_pairs):
             for num in range(2):
                 pair[num].set_ip_for_smartnic(ips_list[idx][num],
-                                              subnet_list[idx][num])
+                                              subnet_list[idx])
                 start_tcpdump(self.cvm_obj.AHV_obj_dict[pair[num].host],
                               pair[num].vf_rep, pair[num].snic_ip,
                               f"/tmp/udp_{pair[num].vf_rep}.txt",pac_type="udp",
