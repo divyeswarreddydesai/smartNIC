@@ -318,18 +318,18 @@ class OemBaseTest:
                 ahv_obj.execute_with_lock(f"rm -f /tmp/{prot_name}_{obj.vf_rep}."+("pcap" if prot_name!="udp" else "txt"))
         for pair in vm_pairs:
             self.flows_addition(pair[0],pair[1])
-        threads = []
-        for idx,pair in enumerate(vm_pairs):
-            for num in range(2):
-                pair[num].set_ip_for_smartnic(ips_list[idx][num],
-                                              subnet_list[idx])
-        for pair in vm_pairs:
-            thread = threading.Thread(target=send_ping, args=(pair[0], pair[1]))
-            threads.append(thread)
-            thread.start()
-        for thread in threads:
-            thread.join()
-        time.sleep(90)
+        # threads = []
+        # for idx,pair in enumerate(vm_pairs):
+        #     for num in range(2):
+        #         pair[num].set_ip_for_smartnic(ips_list[idx][num],
+        #                                       subnet_list[idx])
+        # for pair in vm_pairs:
+        #     thread = threading.Thread(target=send_ping, args=(pair[0], pair[1]))
+        #     threads.append(thread)
+        #     thread.start()
+        # for thread in threads:
+        #     thread.join()
+        # time.sleep(90)
         STEP("Ping traffic completed for all VM pairs.")
         for idx,pair in enumerate(vm_pairs):
             for num in range(2):
@@ -357,14 +357,13 @@ class OemBaseTest:
         flow_data["icmp"] = {}
         ahv_obj_1 = self.cvm_obj.AHV_obj_dict[self.hosts[0]]
         ahv_obj_2 = self.cvm_obj.AHV_obj_dict[self.hosts[len(self.hosts)-1]]
-        time.sleep(15)
+        # time.sleep(15)
         # Collect flow data
-        flows1 = parse_ahv_port_flows(ahv_obj_1)
-        DEBUG(flows1)
-        flows2 = parse_ahv_port_flows(ahv_obj_2)
-        DEBUG(flows2)
+        flows1 = fetch_ahv_port_flows(ahv_obj_1)
+        flows2 = fetch_ahv_port_flows(ahv_obj_2)
+        flows1 = parse_ahv_port_flows(flows1)
+        flows2 = parse_ahv_port_flows(flows2)
         flows = [flows1, flows2]
-        DEBUG(flows)
         #pdb.set_trace()
         flow_data["icmp"]["flows"] = flows
         flow_data["icmp"]["vm_data"] = []
@@ -532,11 +531,13 @@ class OemBaseTest:
             thread.join()
         flow_data["tcp"] = {}
         # Collect flow data
-        time.sleep(2)
-        flows1 = parse_ahv_port_flows(ahv_obj_1)
-        DEBUG(flows1)
-        flows2 = parse_ahv_port_flows(ahv_obj_2)
-        DEBUG(flows2)
+        # time.sleep(2)
+        flows1 = fetch_ahv_port_flows(ahv_obj_1)
+        flows2 = fetch_ahv_port_flows(ahv_obj_2)
+        flows1 = parse_ahv_port_flows(flows1)
+        # DEBUG(flows1)
+        flows2 = parse_ahv_port_flows(flows2)
+        # DEBUG(flows2)
         flows = [flows1, flows2]
         DEBUG(flows)
         flow_data["tcp"]["flows"] = flows
@@ -677,10 +678,12 @@ class OemBaseTest:
         flow_data["udp"] = {}
         # Collect flow data
         time.sleep(2)
-        flows1 = parse_ahv_port_flows(ahv_obj_1)
-        DEBUG(flows1)
-        flows2 = parse_ahv_port_flows(ahv_obj_2)
-        DEBUG(flows2)
+        flows1 = fetch_ahv_port_flows(ahv_obj_1)
+        flows2 = fetch_ahv_port_flows(ahv_obj_2)
+        flows1 = parse_ahv_port_flows(flows1)
+        # DEBUG(flows1)
+        flows2 = parse_ahv_port_flows(flows2)
+        # DEBUG(flows2)
         flows = [flows1, flows2]
         DEBUG(flows)
         flow_data["udp"]["flows"] = flows

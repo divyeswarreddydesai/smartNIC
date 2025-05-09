@@ -172,15 +172,18 @@ def parse_flow(flow):
             }
     return None
 
-def parse_ahv_port_flows(host):
+def fetch_ahv_port_flows(host):
     command = "ovs-appctl dpctl/dump-flows --names -m type=offloaded"
     try:
         # Connect to the remote server
         result=host.execute_with_lock(command)
         output = result["stdout"]
+        return output
 
     except Exception as e:
         assert False, f"The flows are not offloaded or Failed to run command: {e}"
+def parse_ahv_port_flows(output):
+    
     # output = output.split("\n")
     DEBUG("-----------------RAW OFFLOADED FLOWS ON HOST------------------")
     DEBUG(output)
