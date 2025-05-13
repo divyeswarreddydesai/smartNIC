@@ -173,5 +173,54 @@ class VM:
             if "mlx" in self.ssh_obj.execute(f"ethtool -i {iface.name}")["stdout"]:
                 self.smartnic_interface_data = iface
                 INFO(f"SmartNIC interface found: {iface}")
+                self.setup_route_cleanup_service_with_timer(target_interface=iface.name)
                 return iface
         raise ExpError("No SmartNIC interface found")
+    def setup_route_cleanup_service_with_timer(self, primary_interface="ens3", target_interface="ens7"):
+        route_script = rf'''#!/bin/bash
+
+            primary_metric=$(ip route show default dev {primary_interface} | grep -oP 'metric \K[0-9]+' || echo 9999)
+
+            target_route=$(ip route show default dev {target_interface})
+            if echo "$target_route" | grep -q 'metric'; then
+                target_metric=$(echo "$target_route" | grep -oP 'metric \K[0-9]+')
+            else
+                target_metric=0
+            fi
+
+            if [ "$target_metric" -lt "$primary_metric" ]; then
+                ip route del default dev {target_interface}
+            fi
+        '''
+
+        service_unit = f'''[Unit]
+            Description=Check and delete default route for {target_interface} if priority is higher than {primary_interface}
+            After=network.target
+
+            [Service]
+            ExecStart=/usr/local/bin/check_routes.sh
+            Type=oneshot
+            '''
+
+        timer_unit = f'''[Unit]
+            Description=Run route check every 30 seconds
+
+            [Timer]
+            OnBootSec=30
+            OnUnitActiveSec=30
+
+            [Install]
+            WantedBy=timers.target
+            '''
+
+        # Write script and systemd units
+        self.ssh_obj.execute(f"echo '{route_script}' > /usr/local/bin/check_routes.sh && chmod +x /usr/local/bin/check_routes.sh")
+        self.ssh_obj.execute(f"echo '{service_unit}' > /etc/systemd/system/check-{target_interface}-route.service")
+        self.ssh_obj.execute(f"echo '{timer_unit}' > /etc/systemd/system/check-{target_interface}-route.timer")
+
+        # Reload systemd and start timer
+        self.ssh_obj.execute("systemctl daemon-reexec")
+        self.ssh_obj.execute("systemctl daemon-reload")
+        self.ssh_obj.execute(f"systemctl enable check-{target_interface}-route.timer")
+        self.ssh_obj.execute(f"systemctl start check-{target_interface}-route.timer")
+
