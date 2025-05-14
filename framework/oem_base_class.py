@@ -198,7 +198,7 @@ class OemBaseTest:
                         raise ExpError("No common GroupLabel found among all VFs.")
                     group_uuid = common_group_label[0]
                 self.group_uuids[f"{host_ip}_{port}"] = group_uuid
-        for idx,host_ip, port in enumerate(host_ports):
+        for idx,[host_ip, port] in enumerate(host_ports):
             DEBUG(f"Host IP: {host_ip}, Port: {port}, Group UUID: {self.group_uuids[f'{host_ip}_{port}']}, Partitioned: {partitions[f'{host_ip}_{port}']}")
             if idx == 0:
                 self.partition = partitions[f"{host_ip}_{port}"]
