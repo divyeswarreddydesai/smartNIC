@@ -2,6 +2,7 @@ from framework.logging.error import ExpError
 from framework.logging.log import INFO,ERROR,DEBUG
 import json
 import time
+import subprocess
 from framework.vm_helpers.linux_os import LinuxOperatingSystem
 import re
 class NIC:
@@ -107,10 +108,39 @@ class VM:
     def remove_ansi_escape_sequences(text):
         ansi_escape = re.compile(r'\x1B[@-_][0-?]*[ -/]*[@-~]')
         return ansi_escape.sub('', text)
-    def ssh_setup(self,setup,username="root",password="nutanix/4u"):
+    @staticmethod
+    def wait_for_ping(ip, timeout=600, interval=5):
+        """
+        Ping the given IP address until it is reachable or timeout is reached.
+
+        Args:
+            ip (str): IP address to ping.
+            timeout (int): Total time to wait in seconds (default 600).
+            interval (int): Time between pings in seconds (default 5).
+
+        Returns:
+            bool: True if ping is successful within timeout, False otherwise.
+        """
+        import time
+        start_time = time.time()
+        while time.time() - start_time < timeout:
+            try:
+                # Use -c 1 for one ping, -W 2 for 2 seconds timeout per ping
+                result = subprocess.run(
+                    ["ping", "-c", "1", "-W", "2", ip],
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL
+                )
+                if result.returncode == 0:
+                    return True
+            except Exception as e:
+                pass
+            time.sleep(interval)
+        return False
+    def ssh_setup(self,setup,username="root",password="nutanix/4u", wait_time=600):
         vm_id_with_underscore = self.vm_id.replace('-', '_')
         start_time = time.time()
-        while time.time() - start_time < 180:
+        while time.time() - start_time < wait_time:
             try:
                 res=setup.execute(f"busctl call com.nutanix.avm1 /com/nutanix/avm1/vms/{vm_id_with_underscore} com.nutanix.avm1.VmService Get | cut -d\' \' -f 4-")
                 # INFO(res)
@@ -127,11 +157,31 @@ class VM:
             time.sleep(10)  # Sleep for 5 seconds before checking again
 
         if self.ip is None:
-            raise ExpError(f"Failed to get IP address for VM {self.name} within 2 minutes")
+            raise ExpError(f"Failed to get IP address for VM {self.name} within {str(int(wait_time/60))} minutes")
         INFO(f"IP address for VM {self.name}: {self.ip}")
-        self.ssh_obj = LinuxOperatingSystem(self.ip, username=username, password=password)
-        if not self.ssh_obj:
-            raise ExpError(f"Failed to establish connection to any NIC of VM {self.name}")
+        # Wait for the VM to be reachable via ping
+        if not VM.wait_for_ping(self.ip):
+            raise ExpError(f"VM {self.name} is not reachable via ping after {str(int(wait_time/60))} minutes")
+        INFO(f"VM {self.name} is reachable via ping")
+        # Wait for SSH to be available
+        ssh_ready = False
+        ssh_start_time = time.time()
+        while time.time() - ssh_start_time < wait_time:
+            try:
+                ssh_obj = LinuxOperatingSystem(self.ip, username=username, password=password)
+                # Try a simple command to verify SSH is ready
+                result = ssh_obj.execute("echo SSH_READY")
+                if result["status"] == 0 and "SSH_READY" in result["stdout"]:
+                    ssh_ready = True
+                    self.ssh_obj = ssh_obj
+                    INFO(f"SSH is ready for VM {self.name}")
+                    break
+            except Exception as e:
+                DEBUG(f"SSH not ready yet for VM {self.name}: {e}")
+            time.sleep(5)
+
+        if not ssh_ready:
+            raise ExpError(f"SSH is not available for VM {self.name} at {self.ip} after {str(int(wait_time/60))} minutes")
     def get_interface_data(self):
         res = self.ssh_obj.execute("ip -j address")
         self.parse_ip_output(res["stdout"])

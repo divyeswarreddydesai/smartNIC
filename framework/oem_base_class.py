@@ -198,9 +198,14 @@ class OemBaseTest:
                         raise ExpError("No common GroupLabel found among all VFs.")
                     group_uuid = common_group_label[0]
                 self.group_uuids[f"{host_ip}_{port}"] = group_uuid
-        for host_ip, port in host_ports:
+        for idx,host_ip, port in enumerate(host_ports):
             DEBUG(f"Host IP: {host_ip}, Port: {port}, Group UUID: {self.group_uuids[f'{host_ip}_{port}']}, Partitioned: {partitions[f'{host_ip}_{port}']}")
+            if idx == 0:
+                self.partition = partitions[f"{host_ip}_{port}"]
+            else:
+                self.partition_2 = partitions[f"{host_ip}_{port}"]
         INFO("network creation")
+        
         vlan_config = self.oem_config["cluster_host_config"]["vlan_config"]
         if vlan_config.get("existing_vlan_name")!="":
             network_name=vlan_config["existing_vlan_name"]

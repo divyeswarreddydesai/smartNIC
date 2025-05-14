@@ -1,7 +1,7 @@
 
 import random
 from framework.logging.error import ExpError
-from framework.logging.log import INFO,ERROR,DEBUG
+from framework.logging.log import INFO,ERROR,DEBUG,STEP
 from semver import Version
 def firmware_check(setup=None,host_ip=None,port=None,vf=False,driver_version=None,fw_version=None):
     if not vf:
@@ -142,7 +142,7 @@ def port_selection(setup,host_ip,port,excluse_hosts=[],exclude_ports=[]):
                 INFO(setup.AHV_nic_port_map[i][j])
                 if len(setup.AHV_nic_port_map[i][j]["supported_capabilities"])>0 and setup.AHV_nic_port_map[i][j]['nic_type']!="Unknown":
                     try:
-                        INFO(f"Checking firmware and driver version for port {j} on host {i}")
+                        STEP(f"Checking firmware and driver version for port {j} on host {i}")
                         firmware_check(setup=setup,host_ip=i,port=j)
                         break
                     except ExpError as e:

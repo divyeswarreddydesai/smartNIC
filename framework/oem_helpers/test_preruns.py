@@ -3,7 +3,7 @@ import re
 from framework.logging.error import ExpError
 from framework.vm_helpers.linux_os import LinuxOperatingSystem
 from framework.vm_helpers.consts import *
-from framework.logging.log import INFO,DEBUG,WARN,ERROR,STEP,ERROR
+from framework.logging.log import INFO,DEBUG,WARN,ERROR,STEP
 
 def extract_names(log_content):
     # Regular expression to match the Name field
@@ -30,7 +30,7 @@ def set_port(ahv_port_pairs, active=False):
                         f"/sys/class/net/{port}/compat/devlink/mode")
         except Exception as e:
             ERROR(f"Failed to create bridge on AHV: {e}")
-def image_creation(setup,vm_args):
+def image_creation(setup,vm_args,type="kDiskImage"):
     # INFO(setup.execute("ncli ctr list")["stdout"])
     container_names=extract_names(setup.execute("ncli ctr list")["stdout"])
     INFO(f"Container names: {container_names}")
@@ -41,7 +41,7 @@ def image_creation(setup,vm_args):
     def_container = def_container.strip()
     INFO(f"Default container: {def_container}")
     try:
-        res=setup.execute(f"acli image.create {vm_args['name']} source_url={vm_args['source_uri']} image_type=kDiskImage container={def_container}",session_timeout=600)
+        res=setup.execute(f"acli image.create {vm_args['name']} source_url={vm_args['source_uri']} image_type={type} container={def_container}",session_timeout=600)
         INFO(res)
         return True
     except Exception as e:
