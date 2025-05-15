@@ -47,7 +47,7 @@ def firmware_check(setup=None,host_ip=None,port=None,vf=False,driver_version=Non
         ERROR(f"Minimum driver version required is {min_driver}. Current driver version is {driver_version[0]} for port {port} in {host_ip}.")
         raise ExpError(f"Minimum driver version required is {min_driver}. Current driver version is {driver_version[0]}.If you would still like to run it use --skip_fw_check flag for port {port} in {host_ip}")
     DEBUG("driver version satisfied")
-    
+    STEP("Firmware and driver version check for port {0} on host {1} : PASS".format(port,host_ip))
     return True
     # INFO("{0} firmware version is {1}".format(port,))
     # else:
